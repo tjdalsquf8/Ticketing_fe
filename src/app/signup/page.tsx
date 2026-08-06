@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { validateNickname } from '@/lib/errors';
 
 interface FieldErrors {
   name?:            string;
@@ -22,8 +23,9 @@ function validateFields(
 
   if (!name.trim()) {
     errors.name = '이름을 입력해 주세요.';
-  } else if (name.trim().length < 2) {
-    errors.name = '이름은 2자 이상이어야 합니다.';
+  } else {
+    const nickError = validateNickname(name);
+    if (nickError) errors.name = nickError;
   }
 
   if (!email.trim()) {

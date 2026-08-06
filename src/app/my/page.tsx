@@ -20,8 +20,8 @@ export default function MyPage() {
   const [error, setError]       = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch<{ success: boolean; data: UserProfile }>(ROUTES.users.me)
-      .then(({ data }) => setProfile(data))
+    apiFetch<UserProfile>(ROUTES.users.me)
+      .then(setProfile)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : '정보를 불러올 수 없습니다.'))
       .finally(() => setLoading(false));
   }, []);

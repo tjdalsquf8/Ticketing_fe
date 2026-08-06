@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import BookingFlow from '@/components/booking/BookingFlow';
-import { apiFetch, ROUTES, getOrCreateGuestUuid } from '@/lib/api';
+import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { PRACTICE_EVENTS, type PracticeEvent } from '@/data/practiceEvents';
 
@@ -34,20 +34,35 @@ function firstWeekendInPeriod(startDay: number, endDay: number): number {
   return startDay; // 주말 없으면 startDay 반환
 }
 
+const WAITING_STORAGE_KEY = 'practice_waiting';
+
+type WaitingSnapshot = {
+  eventId: number;
+  selectedDate: number;
+  selectedSession: number;
+  /** 이미 발급된 세션 정보. 새로고침 시 재사용해 서버 타이머 연속성 유지 (새로고침 페널티). */
+  sessionId: string | null;
+  startedAt: string | null;
+};
+
 export default function PracticeClient() {
-  const { user, guestNickname } = useAuth();
+  const { user, guestNickname, syncGuestNickname } = useAuth();
   const [selectedEvent, setSelectedEvent] = useState<PracticeEvent | null>(null);
   const [showPopup, setShowPopup] = useState<boolean>(false);
   const [showWaiting, setShowWaiting] = useState<boolean>(false);
   const [waitingProgress, setWaitingProgress] = useState<number>(0);
-  const [, setWaitingSecondsLeft] = useState<number>(8);
+  const [, setWaitingSecondsLeft] = useState<number>(5);
   const [queueNumber, setQueueNumber] = useState<number>(0);
   const snapshotsRef = useRef<{ time: number; value: number }[]>([]);
   const [selectedDate, setSelectedDate] = useState<number>(1);
   const [selectedSession, setSelectedSession] = useState<number>(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // 서버가 기록한 세션 시작 시각 (ISO). 예매하기 클릭 직후 발급되며 랭킹 타이머의 기준점.
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [bookingPending, setBookingPending] = useState<boolean>(false);
   const bookingLockRef = useRef<boolean>(false);
+  // 대기 화면에서 새로고침을 감지해 자동으로 예매 진입을 재개하기 위한 플래그
+  const [pendingResume, setPendingResume] = useState<boolean>(false);
 
   /* 달력 셀 배열 생성: offset 만큼 null, 이후 1~31 */
   const calendarCells: (number | null)[] = [
@@ -63,6 +78,60 @@ export default function PracticeClient() {
     calendarWeeks.push(calendarCells.slice(i, i + 7));
   }
 
+  // 마운트 시 sessionStorage 확인 — 대기 화면에서 새로고침한 경우 이벤트/날짜/회차 + 세션 정보 복원 후 재개 플래그 세팅
+  useEffect(() => {
+    const raw = sessionStorage.getItem(WAITING_STORAGE_KEY);
+    if (!raw) return;
+    // setState는 마이크로태스크로 defer해 React 19의 set-state-in-effect 규칙을 준수
+    queueMicrotask(() => {
+      try {
+        const snap = JSON.parse(raw) as WaitingSnapshot;
+        const event = PRACTICE_EVENTS.find(e => e.eventId === snap.eventId);
+        if (!event) {
+          sessionStorage.removeItem(WAITING_STORAGE_KEY);
+          return;
+        }
+        setSelectedEvent(event);
+        setSelectedDate(snap.selectedDate);
+        setSelectedSession(snap.selectedSession);
+        // 세션 정보가 이미 있으면 재사용 — 재발급하지 않아 서버 startedAt이 유지됨
+        if (snap.sessionId && snap.startedAt) {
+          setSessionId(snap.sessionId);
+          setSessionStartedAt(snap.startedAt);
+        }
+        setPendingResume(true);
+      } catch {
+        sessionStorage.removeItem(WAITING_STORAGE_KEY);
+      }
+    });
+  }, []);
+
+  // 모달(대기/예매 팝업) 열려있을 때 배경 body 스크롤 방지
+  useEffect(() => {
+    if (!showWaiting && !showPopup) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showWaiting, showPopup]);
+
+  // 대기 중일 때만 sessionStorage에 스냅샷 저장 (새로고침 대비). 대기 종료·이탈 시 자동 삭제.
+  useEffect(() => {
+    if (!showWaiting || !selectedEvent) {
+      sessionStorage.removeItem(WAITING_STORAGE_KEY);
+      return;
+    }
+    const snap: WaitingSnapshot = {
+      eventId: selectedEvent.eventId,
+      selectedDate,
+      selectedSession,
+      sessionId,
+      startedAt: sessionStartedAt,
+    };
+    sessionStorage.setItem(WAITING_STORAGE_KEY, JSON.stringify(snap));
+  }, [showWaiting, selectedEvent, selectedDate, selectedSession, sessionId, sessionStartedAt]);
+
   async function handleBooking() {
     if (!selectedEvent) return;
     if (bookingLockRef.current) return;
@@ -70,49 +139,84 @@ export default function PracticeClient() {
     setBookingPending(true);
 
     try {
-      const uuid = getOrCreateGuestUuid();
-      const headers: Record<string, string> = { 'X-Guest-UUID': uuid };
+      // 게스트 식별은 백엔드가 HttpOnly `guest_uuid` 쿠키로 관리 — 첫 세션 시 발급, 이후 자동 전송.
+      // 프론트는 UUID를 조립/전달하지 않는다. (credentials: "include"는 apiFetch가 기본 세팅)
       const nickname = user
         ? user.name
         : guestNickname || `게스트${Math.floor(Math.random() * 9000 + 1000)}`;
 
-      const res = await apiFetch<{ success: boolean; data: { sessionId: string; startedAt: string } }>(
+      const { sessionId: newSessionId, startedAt, nickname: serverNickname } = await apiFetch<{
+        sessionId: string;
+        startedAt: string;
+        nickname: string;
+      }>(
         ROUTES.practice.sessions,
-        { method: 'POST', body: { mode: 'practice', nickname, eventId: selectedEvent.eventId }, headers },
+        { method: 'POST', body: { mode: 'practice', nickname, eventId: selectedEvent.eventId } },
       );
-      setSessionId(res.data.sessionId);
+      setSessionId(newSessionId);
+      setSessionStartedAt(startedAt);
+      // 서버가 게스트 UUID의 최초 닉네임을 강제한 경우 로컬 상태와 동기화
+      // (로그인 유저는 server nickname == user.name이므로 갱신 불필요)
+      if (!user && serverNickname) syncGuestNickname(serverNickname);
     } catch (e) {
       // API 실패는 무시하고 대기 화면으로 진입 (연습 모드이므로 sessionId 없어도 진행)
       void e;
       setSessionId(null);
+      setSessionStartedAt(null);
     }
 
+    startWaiting();
+    // lock 해제는 대기 화면 종료 시점(useEffect duration 도달)에서 수행
+  }
+
+  // 대기 화면 진입 (큐 넘버·프로그레스 초기화 후 showWaiting=true).
+  // handleBooking과 재개 로직에서 공용.
+  function startWaiting() {
     const qn = Math.floor(Math.random() * 50000 + 30000); // 3만~8만명
     setQueueNumber(qn);
     setWaitingProgress(0);
-    setWaitingSecondsLeft(8);
+    setWaitingSecondsLeft(5);
     setShowWaiting(true);
-    // lock 해제는 대기 화면 종료 시점(useEffect duration 도달)에서 수행
   }
+
+  // 새로고침으로 복원된 상태에서 selectedEvent가 세팅되면 예매 자동 재개
+  // - 세션 정보(sessionId + startedAt)가 복원됐으면 API 재호출하지 않고 대기 화면만 다시 표시
+  //   → 서버 startedAt이 유지되어 총 경과 시간이 이어짐 (새로고침 페널티)
+  // - 세션 정보가 없으면(API 최초 실패 등) handleBooking으로 신규 발급 시도
+  useEffect(() => {
+    if (!pendingResume || !selectedEvent) return;
+    queueMicrotask(() => {
+      setPendingResume(false);
+      if (sessionId && sessionStartedAt) {
+        startWaiting();
+      } else {
+        void handleBooking();
+      }
+    });
+    // handleBooking/startWaiting은 최신 클로저 사용 — deps에서 제외해 무한 루프 방지
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingResume, selectedEvent]);
 
   useEffect(() => {
     if (!showWaiting) return;
 
-    const duration = 8000;
+    const duration = 5000;
+    const chunkPhaseEnd = Math.floor(duration * 0.85); // 청크 감소 구간 종료 (4250ms)
+    const tailStart = Math.floor(duration * 0.9);      // 소량만 남기는 시점 (4500ms)
     const initialQueue = queueNumber;
 
     // 청크 스냅샷 생성
-    // 규칙: t=0~7000 구간에서 랜덤 큰 감소, 단 remaining이 초기값의 3% 아래로 내려가지 않음
-    //       t=7200에서 소량만 남기고 t=8000에서 0 → progress와 동기화
+    // 규칙: t=0~chunkPhaseEnd 구간에서 랜덤 큰 감소, 단 remaining이 초기값의 3% 아래로 내려가지 않음
+    //       t=tailStart에서 소량만 남기고 t=duration에서 0 → progress와 동기화
     const snapshots: { time: number; value: number }[] = [{ time: 0, value: initialQueue }];
     let remaining = initialQueue;
     let t = 0;
-    const floor = Math.floor(initialQueue * 0.03); // 마지막 구간 전까지 최소값
+    const floor = Math.floor(initialQueue * 0.03);
 
-    while (t < 6800) {
-      const gap = Math.floor(Math.random() * 450 + 200);
+    while (t < chunkPhaseEnd) {
+      const gap = Math.floor(Math.random() * 280 + 130); // 5초 구간에 맞춘 자연스러운 간격
       t += gap;
-      if (t >= 6800) break;
+      if (t >= chunkPhaseEnd) break;
       const minChunk = Math.floor(initialQueue * 0.05);
       const maxChunk = Math.floor(initialQueue * 0.14);
       const decrement = Math.floor(Math.random() * (maxChunk - minChunk) + minChunk);
@@ -120,9 +224,9 @@ export default function PracticeClient() {
       snapshots.push({ time: t, value: remaining });
       if (remaining <= floor) break;
     }
-    // t=7200: 아주 조금만 남기기
-    snapshots.push({ time: 7200, value: Math.floor(initialQueue * 0.01) });
-    // t=8000: 0 (progress 100%와 동기화)
+    // tailStart: 아주 조금만 남기기
+    snapshots.push({ time: tailStart, value: Math.floor(initialQueue * 0.01) });
+    // duration: 0 (progress 100%와 동기화)
     snapshots.push({ time: duration, value: 0 });
     snapshotsRef.current = snapshots;
 
@@ -663,8 +767,8 @@ export default function PracticeClient() {
             </div>
           </div>
 
-          {/* BookingFlow 본문 */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          {/* BookingFlow 본문 — 세로 오버플로우 시 모달 내부에서 스크롤 */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <BookingFlow
               venue={selectedEvent.venue}
               meta={{
@@ -675,6 +779,7 @@ export default function PracticeClient() {
               }}
               mode="practice"
               sessionId={sessionId ?? undefined}
+              startedAt={sessionStartedAt ?? undefined}
               skipCaptcha={false}
               onBack={() => setShowPopup(false)}
             />
