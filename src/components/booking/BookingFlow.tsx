@@ -7,7 +7,7 @@ import CaptchaModal  from './CaptchaModal';
 import ZoneMap       from './ZoneMap';
 import SeatGrid      from './SeatGrid';
 import SelectionPanel from './SelectionPanel';
-import { apiFetch, ROUTES, getOrCreateGuestUuid } from '@/lib/api';
+import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import TicketModal, { type TicketData } from './TicketModal';
 
@@ -20,9 +20,11 @@ type Step = 'captcha' | 'zone' | 'seats' | 'done';
 
 type SessionResult = {
   elapsedMs: number;
-  rankNumber: number;
-  rankPercentile: number;
-  totalCount: number;
+  /** false: 다른 게스트가 먼저 쓴 닉네임이라 랭킹 미반영. 이 경우 rank 필드는 모두 null. */
+  ranked: boolean;
+  rankNumber: number | null;
+  rankPercentile: number | null;
+  totalCount: number | null;
 };
 
 interface BookingMeta {
@@ -37,13 +39,19 @@ interface Props {
   meta:        BookingMeta;
   mode:        'practice' | 'live';
   sessionId?:  string;
+  /**
+   * 서버가 발급한 세션 시작 시각(ISO). 주어지면 타이머가 이 시점부터 계산되어
+   * 대기 화면·CAPTCHA를 포함한 서버 랭킹 시간과 정확히 일치한다.
+   * 없으면 컴포넌트 마운트 시점부터 카운트하는 폴백 동작.
+   */
+  startedAt?:  string;
   skipCaptcha?: boolean;
   resultPath?: string;
   onBack?:     () => void;
 }
 
 export default function BookingFlow({
-  venue, meta, mode, sessionId, skipCaptcha = false, resultPath, onBack,
+  venue, meta, mode, sessionId, startedAt, skipCaptcha = false, resultPath, onBack,
 }: Props) {
   const router = useRouter();
   const [step,         setStep]         = useState<Step>(skipCaptcha ? 'zone' : 'captcha');
@@ -56,15 +64,32 @@ export default function BookingFlow({
   const [bookedSeats,    setBookedSeats]    = useState<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
-  /* 타이머 — zone/seats 단계에서 시작 */
+  /* 타이머
+   * - startedAt(서버 발급 세션 시작 시각) 주어지면: 마운트~완료까지 그 시점 기준으로 실시간 계산.
+   *   → 대기 화면·CAPTCHA·좌석 선택 시간이 모두 포함되어 서버 랭킹 시간과 일치.
+   * - startedAt 없으면(폴백): 기존 방식대로 zone/seats 단계에서만 로컬 카운트.
+   */
   useEffect(() => {
+    if (step === 'done') {
+      clearInterval(timerRef.current);
+      return;
+    }
+    if (startedAt) {
+      const startMs = Date.parse(startedAt);
+      if (Number.isFinite(startMs)) {
+        const tick = () => setElapsedMs(Math.max(0, Date.now() - startMs));
+        tick();
+        timerRef.current = setInterval(tick, 10);
+        return () => clearInterval(timerRef.current);
+      }
+    }
     if (step === 'zone' || step === 'seats') {
       timerRef.current = setInterval(() => setElapsedMs(e => e + 10), 10);
     } else {
       clearInterval(timerRef.current);
     }
     return () => clearInterval(timerRef.current);
-  }, [step]);
+  }, [step, startedAt]);
 
   const handleCaptchaConfirm = () => setStep('zone');
   const handleCaptchaCancel  = () => onBack?.();
@@ -113,13 +138,11 @@ export default function BookingFlow({
     let result: SessionResult | null = null;
     if (sessionId) {
       try {
-        const uuid = getOrCreateGuestUuid();
-        const headers: Record<string, string> = { 'X-Guest-UUID': uuid };
-        const res = await apiFetch<{ success: boolean; data: SessionResult }>(
+        // 게스트 식별은 HttpOnly `guest_uuid` 쿠키로 자동 전송됨. X-Guest-UUID 헤더 조립 불필요.
+        result = await apiFetch<SessionResult>(
           ROUTES.practice.completeSession(sessionId),
-          { method: 'POST', body: { clientElapsedMs: elapsedMs }, headers },
+          { method: 'POST', body: { clientElapsedMs: elapsedMs } },
         );
-        result = res.data;
         setSessionResult(result);
       } catch (e) {
         if (process.env.NODE_ENV !== 'production') {
@@ -141,9 +164,12 @@ export default function BookingFlow({
       nickname,
       isGuest:        !user,
       elapsedMs:      result?.elapsedMs ?? elapsedMs,
-      rankNumber:     result?.rankNumber ?? 0,
-      totalCount:     result?.totalCount ?? 0,
-      rankPercentile: result?.rankPercentile ?? 0,
+      // ranked === false면 rank 필드는 모두 null이므로 그대로 전달 (TicketModal에서 방어)
+      // API 실패로 result === null인 경우도 ranked=false로 취급해 UI 방어
+      ranked:         result?.ranked ?? false,
+      rankNumber:     result?.rankNumber ?? null,
+      totalCount:     result?.totalCount ?? null,
+      rankPercentile: result?.rankPercentile ?? null,
       serial:         `TR-${dateStr}-${stubNum}`,
       issuedAt,
     });
@@ -221,7 +247,7 @@ export default function BookingFlow({
                 </span>
               </p>
 
-              {sessionResult && (
+              {sessionResult?.ranked && sessionResult.rankNumber !== null && sessionResult.totalCount !== null && sessionResult.rankPercentile !== null && (
                 <div className="flex justify-center gap-6 py-3 border-y border-border">
                   <div>
                     <p className="text-xs text-text-secondary mb-0.5">내 순위</p>
@@ -239,6 +265,12 @@ export default function BookingFlow({
                       {sessionResult.rankPercentile.toFixed(1)}%
                     </p>
                   </div>
+                </div>
+              )}
+
+              {sessionResult && !sessionResult.ranked && (
+                <div className="mx-auto max-w-sm rounded-lg border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
+                  다른 게스트가 먼저 사용한 닉네임이라 랭킹에 반영되지 않았습니다.
                 </div>
               )}
 

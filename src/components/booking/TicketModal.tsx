@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 /* ─────────────────────────────────────────────
    TicketModal — 가로형 콘서트 티켓
@@ -13,9 +13,11 @@ export interface TicketData {
   nickname:       string;
   isGuest:        boolean;
   elapsedMs:      number;
-  rankNumber:     number;
-  totalCount:     number;
-  rankPercentile: number;
+  /** false면 다른 게스트가 먼저 사용한 닉네임이라 랭킹 미반영. rank 필드는 모두 null. */
+  ranked:         boolean;
+  rankNumber:     number | null;
+  totalCount:     number | null;
+  rankPercentile: number | null;
   serial:         string;
   issuedAt:       Date;
 }
@@ -80,10 +82,19 @@ function Field({ label, value, accent }: { label: string; value: string; accent?
 
 export default function TicketModal(props: Props) {
   const { eventTitle, seat, nickname, isGuest,
-          elapsedMs, rankNumber, totalCount, rankPercentile,
+          elapsedMs, ranked, rankNumber, totalCount, rankPercentile,
           serial, issuedAt, onClose, onRetry } = props;
+  const hasRank = ranked && rankNumber !== null && totalCount !== null && rankPercentile !== null;
 
+  const router = useRouter();
   const [saved, setSaved] = useState(false);
+
+  const handleGoToRanking = () => {
+    onClose();
+    // Router Cache 무효화 후 이동 — 방금 등록된 세션이 즉시 반영되도록
+    router.refresh();
+    router.push('/ranking');
+  };
   const stub = (serial.split('-')[2] ?? '00000').padStart(7, '0');
   const timeStr = (elapsedMs / 1000).toFixed(3) + 's';
 
@@ -91,16 +102,8 @@ export default function TicketModal(props: Props) {
     <div
       className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-3 p-4"
       style={{ background: 'rgba(0,0,0,0.85)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      // 배경 클릭·상단 닫기 버튼으로 실수 종료 방지 — 하단 액션 버튼(다시하기/순위/저장)만으로 이탈 가능
     >
-      {/* 닫기 */}
-      <div className="flex items-center justify-between w-full" style={{ maxWidth: 700 }}>
-        <div />
-        <button onClick={onClose} className="text-white/40 hover:text-white text-sm transition-colors">
-          닫기 ✕
-        </button>
-      </div>
-
       {/* ── 티켓 카드 (가로형) ── */}
       <div
         className="relative flex w-full rounded-2xl overflow-hidden shadow-2xl"
@@ -171,9 +174,15 @@ export default function TicketModal(props: Props) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
             <Field label="SEAT" value={seat} />
             <Field label="TIME" value={timeStr} accent />
-            <Field label="RANK" value={`${rankNumber} / ${totalCount}`} />
-            <Field label="TOP"  value={`${rankPercentile.toFixed(1)}%`} accent />
+            <Field label="RANK" value={hasRank ? `${rankNumber} / ${totalCount}` : '—'} />
+            <Field label="TOP"  value={hasRank ? `${rankPercentile!.toFixed(1)}%` : '—'} accent />
           </div>
+
+          {!ranked && (
+            <p style={{ color: '#FFB020', fontSize: 9, marginTop: 4 }}>
+              ⚠ 다른 게스트가 먼저 사용한 닉네임이라 랭킹에 반영되지 않았습니다.
+            </p>
+          )}
 
           <p style={{ color: '#333', fontSize: 9 }}>
             본 티켓은 <strong style={{ color: '#555' }}>{nickname}</strong>님 전용이며 양도 시 효력이 없습니다.
@@ -228,15 +237,15 @@ export default function TicketModal(props: Props) {
         </button>
 
         {/* 순위보러가기 */}
-        <Link
-          href="/ranking"
-          onClick={onClose}
+        <button
+          type="button"
+          onClick={handleGoToRanking}
           className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all"
           style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)' }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
           순위 보러가기
-        </Link>
+        </button>
 
         {/* 저장 (로그인 유저만) */}
         {!isGuest && (

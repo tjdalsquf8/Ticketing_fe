@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ROUTES } from '@/lib/api';
 import { PRACTICE_EVENTS } from '@/data/practiceEvents';
+import RankingRows from '@/components/ranking/RankingRows';
 
 export const metadata: Metadata = { title: '랭킹' };
 
@@ -14,12 +15,6 @@ type RankEntry = {
   best_ms: number;
   is_verified: boolean;
 };
-
-const RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
-
-function formatTime(ms: number) {
-  return (ms / 1000).toFixed(3) + 's';
-}
 
 function parsePositiveInt(
   value: string | string[] | undefined,
@@ -73,7 +68,8 @@ async function fetchRankings(mode: Mode, period: Period, eventId?: number): Prom
 
   try {
     const res = await fetch(url, {
-      next: { revalidate: 30 },
+      // 매 요청마다 최신 랭킹 반영 (세션 완료 직후 재방문 시 지연 방지)
+      cache: 'no-store',
       credentials: 'include',
     });
     if (!res.ok) {
@@ -114,7 +110,6 @@ export default async function RankingPage({
   const eventId = parsePositiveInt(params.eventId, { max: 999999 });
 
   const rankings = await fetchRankings(mode, period, eventId);
-  const myEntry = null as RankEntry | null;
 
   const baseQuery = `mode=${mode}&period=${period}`;
 
@@ -196,25 +191,6 @@ export default async function RankingPage({
         </div>
       )}
 
-      {/* 내 순위 요약 */}
-      {myEntry && (
-        <div className="card p-4 flex items-center gap-4 border-primary-border bg-primary-subtle">
-          <div className="text-2xl font-bold font-mono-tabular text-primary w-10 text-center">
-            {myEntry.rank}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-text">내 순위</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              소요 시간:{' '}
-              <strong className="text-text font-mono-tabular">
-                {formatTime(myEntry.best_ms)}
-              </strong>
-            </p>
-          </div>
-          <span className="badge badge-primary shrink-0">TOP {myEntry.rank}</span>
-        </div>
-      )}
-
       {/* 랭킹 테이블 */}
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
@@ -226,42 +202,7 @@ export default async function RankingPage({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rankings.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-secondary">
-                  아직 기록이 없습니다.
-                </td>
-              </tr>
-            ) : (
-              rankings.map((row, i) => {
-                const isMe = row.nickname === myEntry?.nickname;
-                return (
-                  <tr
-                    key={`${row.rank}-${i}`}
-                    className={[
-                      'transition-colors',
-                      isMe ? 'bg-primary-subtle' : 'hover:bg-bg-subtle',
-                    ].join(' ')}
-                  >
-                    <td className="px-4 py-3 font-mono-tabular font-semibold text-text-secondary">
-                      {RANK_BADGE[row.rank] ?? row.rank}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={['font-medium', isMe ? 'text-primary' : 'text-text'].join(' ')}>
-                        {row.nickname}
-                      </span>
-                      {row.is_verified && (
-                        <span className="ml-2 badge badge-primary">인증</span>
-                      )}
-                      {isMe && <span className="ml-2 text-xs text-primary font-semibold">(나)</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono-tabular font-bold text-text">
-                      {formatTime(row.best_ms)}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+            <RankingRows rankings={rankings} />
           </tbody>
         </table>
       </div>
