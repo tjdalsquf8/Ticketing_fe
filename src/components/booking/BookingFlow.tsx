@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { VenueConfig, SelectedSeat } from '@/types/ticketing';
 import CaptchaModal  from './CaptchaModal';
 import ZoneMap       from './ZoneMap';
+import StadiumMap    from './StadiumMap';
 import SeatGrid      from './SeatGrid';
 import SelectionPanel from './SelectionPanel';
 import { apiFetch, ROUTES } from '@/lib/api';
@@ -226,7 +227,9 @@ export default function BookingFlow({
         {/* 좌석 영역 */}
         <div className="flex-1 min-w-0">
           {(step === 'zone' || step === 'done') && !activeZoneId && (
-            <ZoneMap venue={venue} onSelectZone={handleSelectZone} />
+            venue.layout === 'auditorium'
+              ? <StadiumMap venue={venue} onSelectZone={handleSelectZone} />
+              : <ZoneMap    venue={venue} onSelectZone={handleSelectZone} />
           )}
           {step === 'seats' && activeZone && (
             <SeatGrid
@@ -235,6 +238,7 @@ export default function BookingFlow({
               selected={new Set(selected.map(s => s.id))}
               bookedSeats={bookedSeats}
               onToggle={handleToggleSeat}
+              layout={venue.layout}
             />
           )}
           {step === 'done' && mode === 'practice' && (

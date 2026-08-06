@@ -13,6 +13,15 @@ interface Props {
 }
 
 export default function ZoneMap({ venue, onSelectZone }: Props) {
+  const isAuditorium = venue.layout === 'auditorium';
+
+  // 스타디움 돔 형태: 위쪽은 반타원, 아래는 살짝 라운드. border-radius 축약 문법.
+  const auditoriumShape = isAuditorium
+    ? {
+        borderRadius: '50% 50% 14px 14px / 30% 30% 14px 14px',
+      }
+    : undefined;
+
   return (
     <div className="space-y-2">
       {/* 안내 문구 */}
@@ -21,7 +30,15 @@ export default function ZoneMap({ venue, onSelectZone }: Props) {
       </div>
 
       {/* 구역 맵 */}
-      <div className="border border-[#E5E7EB] bg-white p-6 overflow-x-auto">
+      <div
+        className={[
+          'overflow-x-auto',
+          isAuditorium
+            ? 'border-2 border-[#94A3B8] bg-gradient-to-b from-[#F1F5F9] to-white px-8 pt-4 pb-8'
+            : 'border border-[#E5E7EB] bg-white p-6',
+        ].join(' ')}
+        style={auditoriumShape}
+      >
         <div className="min-w-[560px]">
           {venue.mapGrid.map((row, ri) => (
             <div key={ri}
@@ -35,6 +52,30 @@ export default function ZoneMap({ venue, onSelectZone }: Props) {
                 }
 
                 if (cell.type === 'stage') {
+                  if (isAuditorium) {
+                    // 곡선 STAGE 아크 — 위로 볼록한 호
+                    return (
+                      <div key={ci} style={{ flex: span }} className="relative pb-2">
+                        <svg
+                          viewBox="0 0 400 40"
+                          preserveAspectRatio="none"
+                          className="w-full h-8"
+                          aria-hidden="true"
+                        >
+                          <path
+                            d="M 20 38 Q 200 -8 380 38"
+                            fill="none"
+                            stroke="#64748B"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                        <span className="absolute inset-x-0 top-2 text-center text-xs font-bold text-[#475569] tracking-[0.35em] uppercase">
+                          STAGE
+                        </span>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={ci}
@@ -73,7 +114,10 @@ export default function ZoneMap({ venue, onSelectZone }: Props) {
                         background: tier.bg,
                       }}
                       onClick={() => onSelectZone(zone.id)}
-                      className="rounded py-4 flex flex-col items-center justify-center hover:brightness-95 transition-all min-h-[64px]"
+                      className={[
+                        'py-4 flex flex-col items-center justify-center hover:brightness-95 transition-all min-h-[64px]',
+                        isAuditorium ? 'rounded-lg border border-[#CBD5E1]' : 'rounded',
+                      ].join(' ')}
                     >
                       <span className="text-xl font-bold" style={{ color: tier.color }}>
                         {zone.name}

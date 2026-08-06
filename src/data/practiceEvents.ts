@@ -62,15 +62,15 @@ const CLUB_STAGE: VenueConfig = {
       { type: 'label', text: '2F' },
     ],
     [
+      { type: 'empty' },
       { type: 'zone', zoneId: 'A' },
       { type: 'zone', zoneId: 'B' },
       { type: 'empty' },
-      { type: 'empty' },
     ],
     [
+      { type: 'empty' },
       { type: 'zone', zoneId: 'C' },
       { type: 'zone', zoneId: 'D' },
-      { type: 'empty' },
       { type: 'empty' },
     ],
     [
@@ -81,94 +81,54 @@ const CLUB_STAGE: VenueConfig = {
   ],
 };
 
-/* ── 이벤트 3: 대규모 아레나 ── */
+/* ── 이벤트 3: 실내 아레나 (스탠딩 블록 + 2층 지정석) ── */
+// 참고: 잠실 실내체육관형. 각 블록(101~106, 201~206, 301~304, 401~404, 001~011)은
+// 개별 클릭 가능 zone. 클릭하면 그 블록의 개별 좌석 그리드로 진입.
+// 스탠딩 블록도 seated로 모델링해 "실제 좌석표" UX 제공.
+const stdRows = (rowCount: number, seatCount: number) =>
+  Array.from({ length: rowCount }, (_, i) => ({
+    label: String(i + 1),
+    seatCount,
+  }));
+
+const makeStandingBlock = (id: string, tier: string) => ({
+  id,
+  name: id,           // 블록 번호 자체를 이름으로 (예: '101')
+  tier,
+  type: 'seated' as const,
+  seatRows: stdRows(5, 10),  // 각 블록 5열 × 10석 = 50석
+});
+
+const make2FBlock = (num: number) => ({
+  id: `2F-${String(num).padStart(2, '0')}`,
+  name: `${num}구역`,
+  tier: 's2f',
+  type: 'seated' as const,
+  seatRows: stdRows(3, 8),   // 각 2층 구역 3열 × 8석 = 24석
+});
+
 const ARENA: VenueConfig = {
   id: 'arena-v1',
-  name: '잠실 보조경기장',
+  name: '잠실 실내체육관',
   tiers: {
-    vip:     { label: 'VIP석', price: 0, color: '#DC2626', bg: '#FEF2F2' },
-    general: { label: '일반석', price: 0, color: '#2563EB', bg: '#EFF6FF' },
+    stdAB: { label: 'Standing A & B', price: 132000, color: '#9333EA', bg: '#F3E8FF' },
+    stdCD: { label: 'Standing C & D', price: 110000, color: '#16A34A', bg: '#DCFCE7' },
+    s2f:   { label: '2층 S석',        price: 110000, color: '#2563EB', bg: '#DBEAFE' },
   },
   zones: [
-    {
-      id: 'VIP-L', name: 'VIP-L', tier: 'vip', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 10 },
-        { label: '2', seatCount: 10 },
-        { label: '3', seatCount: 10 },
-        { label: '4', seatCount: 10 },
-      ],
-    },
-    {
-      id: 'VIP-R', name: 'VIP-R', tier: 'vip', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 10 },
-        { label: '2', seatCount: 10 },
-        { label: '3', seatCount: 10 },
-        { label: '4', seatCount: 10 },
-      ],
-    },
-    {
-      id: 'A', name: 'A', tier: 'general', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 15 },
-        { label: '2', seatCount: 15 },
-        { label: '3', seatCount: 15 },
-        { label: '4', seatCount: 15 },
-      ],
-    },
-    {
-      id: 'B', name: 'B', tier: 'general', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 15 },
-        { label: '2', seatCount: 15 },
-        { label: '3', seatCount: 15 },
-        { label: '4', seatCount: 15 },
-      ],
-    },
-    {
-      id: 'C', name: 'C', tier: 'general', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 12 },
-        { label: '2', seatCount: 12 },
-        { label: '3', seatCount: 12 },
-        { label: '4', seatCount: 12 },
-      ],
-    },
-    {
-      id: 'D', name: 'D', tier: 'general', type: 'seated',
-      seatRows: [
-        { label: '1', seatCount: 12 },
-        { label: '2', seatCount: 12 },
-        { label: '3', seatCount: 12 },
-        { label: '4', seatCount: 12 },
-      ],
-    },
+    // Standing A: 101~106
+    ...[101, 102, 103, 104, 105, 106].map((n) => makeStandingBlock(String(n), 'stdAB')),
+    // Standing B: 201~206
+    ...[201, 202, 203, 204, 205, 206].map((n) => makeStandingBlock(String(n), 'stdAB')),
+    // Standing C: 301~304
+    ...[301, 302, 303, 304].map((n) => makeStandingBlock(String(n), 'stdCD')),
+    // Standing D: 401~404
+    ...[401, 402, 403, 404].map((n) => makeStandingBlock(String(n), 'stdCD')),
+    // 2층 1구역~11구역
+    ...Array.from({ length: 11 }, (_, i) => make2FBlock(i + 1)),
   ],
-  mapGrid: [
-    [
-      { type: 'label', text: 'VIP' },
-      { type: 'stage', colSpan: 2 },
-      { type: 'label', text: 'VIP' },
-    ],
-    [
-      { type: 'zone', zoneId: 'VIP-L' },
-      { type: 'zone', zoneId: 'A' },
-      { type: 'zone', zoneId: 'B' },
-      { type: 'zone', zoneId: 'VIP-R' },
-    ],
-    [
-      { type: 'empty' },
-      { type: 'zone', zoneId: 'C' },
-      { type: 'zone', zoneId: 'D' },
-      { type: 'empty' },
-    ],
-    [
-      { type: 'empty' },
-      { type: 'label', text: 'FLOOR', colSpan: 2 },
-      { type: 'empty' },
-    ],
-  ],
+  layout: 'auditorium',
+  mapGrid: [], // StadiumMap이 zone id 기반으로 커스텀 렌더하므로 미사용
 };
 
 export const PRACTICE_EVENTS: PracticeEvent[] = [
@@ -205,7 +165,7 @@ export const PRACTICE_EVENTS: PracticeEvent[] = [
     id: 'arena-c',
     eventId: 3,
     title: '[연습] 서머 팝 콘서트 - 잠실',
-    venueName: '잠실 보조경기장',
+    venueName: '잠실 실내체육관',
     period: '2026.08.15 ~ 2026.08.16',
     posterBg: '#180A04',
     posterAccent: '#C14B1A',
