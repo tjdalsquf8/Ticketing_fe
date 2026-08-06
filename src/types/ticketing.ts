@@ -49,6 +49,11 @@ export interface VenueConfig {
   tiers: Record<string, TierInfo>;  // 해당 공연장 좌석 등급
   zones: Zone[];
   mapGrid: MapCell[][];             // 전체 보기 그리드 레이아웃
+  /**
+   * ZoneMap 시각 스타일. 기본 'grid'는 사각형 카드. 'auditorium'은 돔형 외곽선 +
+   * 곡선 STAGE 아크로 스타디움/공연홀 느낌을 준다 (구역 데이터 자체는 동일).
+   */
+  layout?: 'grid' | 'auditorium';
 }
 
 /** 선택된 좌석 한 개 */
