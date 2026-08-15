@@ -17,15 +17,18 @@ interface Props {
   zone: Zone;
   tier: TierInfo;
   selected: Set<string>;
-  bookedSeats: Set<string>;     // 랜덤 예매완료 좌석 (BookingFlow에서 주입)
+  bookedSeats: Set<string>;     // 선택 불가 좌석 (연습: 랜덤 예매완료 / 라이브 미리보기: 미오픈)
   onToggle: (seat: SelectedSeat) => void;
   maxSelect?: number;
   /** VenueConfig.layout 그대로 — 'auditorium'이면 곡선 스테이지·돔형 컨테이너·행별 arc offset 적용 */
-  layout?: 'grid' | 'auditorium';
+  layout?: 'grid' | 'auditorium' | 'proscenium' | 'arena-ring' | 'baseball' | 'stadium-oval' | 'festival';
+  /** bookedSeats의 표시 라벨. 기본 "예매 완료" / 라이브 미리보기에서는 "미오픈" 등으로 교체 */
+  unavailableLabel?: string;
 }
 
 export default function SeatGrid({
   zone, tier, selected, bookedSeats, onToggle, maxSelect = MAX_SELECT, layout,
+  unavailableLabel = '예매 완료',
 }: Props) {
   const isAuditorium = layout === 'auditorium';
 
@@ -136,7 +139,7 @@ export default function SeatGrid({
                     return (
                       <button
                         key={id}
-                        title={taken ? '예매 완료' : `${label}열 ${col}번 — ${tier.label} ${fmtPrice(tier.price)}`}
+                        title={taken ? unavailableLabel : `${label}열 ${col}번 — ${tier.label} ${fmtPrice(tier.price)}`}
                         disabled={taken}
                         onClick={() => {
                           if (taken) return;
@@ -189,7 +192,7 @@ export default function SeatGrid({
           <div className="flex items-center gap-1.5">
             <span className="inline-block"
                   style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#E2E8F0', border: '1px solid #CBD5E1' }} />
-            예매 완료
+            {unavailableLabel}
           </div>
         </div>
       </div>

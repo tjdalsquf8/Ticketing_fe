@@ -59,6 +59,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   TOO_MANY_REFRESH_ATTEMPTS:
     "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
   TOO_MANY_REQUESTS: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+  NETWORK_ERROR: "서버에 연결할 수 없습니다. 네트워크 상태를 확인하거나 잠시 후 다시 시도해 주세요.",
+  NOT_ADMIN: "관리자 권한이 필요합니다.",
+  ROUND_NOT_FOUND: "해당 회차를 찾을 수 없습니다.",
+  ROUND_NOT_CANCELLABLE: "오픈 예정 상태의 회차만 취소할 수 있습니다.",
   INTERNAL_ERROR: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
 };
 
