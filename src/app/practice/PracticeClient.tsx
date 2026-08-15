@@ -5,7 +5,31 @@ import Image from 'next/image';
 import BookingFlow from '@/components/booking/BookingFlow';
 import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { PRACTICE_EVENTS, type PracticeEvent } from '@/data/practiceEvents';
+import { PRACTICE_EVENTS, type PracticeEvent } from '@/data/practice';
+import { parseLiveSeatLabel } from '@/data/live/seatLabels';
+
+/**
+ * 해당 tier에 속한 "실제 선택 가능한 좌석 수"를 계산.
+ * - 라이브 미리보기 이벤트(liveSeatLabels 있음): 그 라벨 중 tier의 zone에 속한 것만 카운트
+ * - 일반 연습 이벤트: venue 정의(seatRows)의 seatCount 합
+ */
+function countSelectableSeatsByTier(event: PracticeEvent, tierId: string): number {
+  if (event.liveSeatLabels && event.liveSeatLabels.length > 0) {
+    const zoneIdsInTier = new Set(
+      event.venue.zones.filter((z) => z.tier === tierId).map((z) => z.id),
+    );
+    return event.liveSeatLabels.filter((label) => {
+      const parsed = parseLiveSeatLabel(label);
+      return parsed !== null && zoneIdsInTier.has(parsed.zoneId);
+    }).length;
+  }
+  return event.venue.zones
+    .filter((z) => z.tier === tierId)
+    .reduce(
+      (acc, z) => acc + (z.seatRows?.reduce((s, r) => s + r.seatCount, 0) ?? 0),
+      0,
+    );
+}
 
 /* ──────────────────────────────────────────────────────────
    연습 모드 — 이벤트 선택 + 인터파크 스타일 공연 상세 페이지
@@ -630,9 +654,7 @@ export default function PracticeClient() {
                       <span>
                         {tier.label}{' '}
                         <span className="font-semibold text-text">
-                          {selectedEvent.venue.zones
-                            .filter(z => z.tier === tierId)
-                            .reduce((acc, z) => acc + (z.seatRows?.reduce((s, r) => s + r.seatCount, 0) ?? 0), 0)}
+                          {countSelectableSeatsByTier(selectedEvent, tierId)}
                         </span>
                       </span>
                       {idx < arr.length - 1 && (
@@ -782,6 +804,7 @@ export default function PracticeClient() {
               startedAt={sessionStartedAt ?? undefined}
               skipCaptcha={false}
               onBack={() => setShowPopup(false)}
+              liveSeatLabels={selectedEvent.liveSeatLabels}
             />
           </div>
         </div>

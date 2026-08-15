@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { apiFetch, ROUTES } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface UserProfile {
   id: number;
@@ -11,10 +12,13 @@ interface UserProfile {
   created_at: string;
 }
 
+// 백엔드 연동 전까지 정적 mock
 const TICKET_COUNT = 0;
-const NEXT_REWARD  = 10;
+const LEADERBOARD_RANK: number | null = null;
 
 export default function MyPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [profile, setProfile]   = useState<UserProfile | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -26,14 +30,13 @@ export default function MyPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const progress = Math.min((TICKET_COUNT / NEXT_REWARD) * 100, 100);
   const displayName = profile?.name ?? '—';
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-8">
 
       {/* 프로필 요약 */}
-      <div className="card p-6 space-y-4">
+      <div className="card p-6 space-y-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-bg-subtle border border-border flex items-center justify-center text-sm font-bold text-text-secondary">
             {isLoading ? '…' : displayName[0] ?? '?'}
@@ -52,39 +55,41 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 티켓 적립 진행도 */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-text-secondary">리워드까지 남은 티켓</span>
-            <span className="font-semibold text-text font-mono-tabular">
-              {TICKET_COUNT} / {NEXT_REWARD}매
-            </span>
+        {/* 통계 스탯 — 누적 티켓 / 리더보드 순위 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
+            <p className="text-xs text-text-secondary">누적 티켓</p>
+            <p className="mt-1 font-mono-tabular">
+              <strong className="text-2xl text-text">{TICKET_COUNT}</strong>
+              <span className="text-sm text-text-tertiary ml-1">매</span>
+            </p>
           </div>
-          <div className="h-2 rounded-full bg-bg-subtle border border-border overflow-hidden">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${progress}%` }}
-            />
+          <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
+            <p className="text-xs text-text-secondary">리더보드 순위</p>
+            <p className="mt-1 font-mono-tabular">
+              {LEADERBOARD_RANK !== null ? (
+                <>
+                  <strong className="text-2xl text-text">{LEADERBOARD_RANK}</strong>
+                  <span className="text-sm text-text-tertiary ml-1">위</span>
+                </>
+              ) : (
+                <span className="text-sm text-text-tertiary">아직 순위 없음</span>
+              )}
+            </p>
           </div>
-          <p className="text-xs text-text-tertiary">
-            {NEXT_REWARD - TICKET_COUNT}매 더 모으면 기프티콘으로 교환 가능해요.
-          </p>
         </div>
 
-        <Link href="/rewards" className="btn btn-outline btn-sm w-full sm:w-auto">
-          리워드 스토어 가기
-        </Link>
+        {/* 관리자 진입 — role=admin 전용. UI 은닉이며 최종 인가는 백엔드 requireAdmin이 담당. */}
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="mt-1 flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/10 transition-colors"
+          >
+            <span>관리자 페이지</span>
+            <span aria-hidden className="text-lg leading-none">›</span>
+          </Link>
+        )}
       </div>
-
-      {/* 티켓함 */}
-      <section>
-        <h2 className="text-sm font-semibold text-text mb-3">
-          티켓함 <span className="text-text-tertiary font-normal">({TICKET_COUNT}매)</span>
-        </h2>
-        <div className="card p-6 text-center text-sm text-text-secondary">
-          아직 티켓이 없습니다. 실전 이벤트에 참여해보세요.
-        </div>
-      </section>
 
       {/* 참여 이력 */}
       <section>
@@ -110,23 +115,23 @@ export default function MyPage() {
         </div>
       </section>
 
-      {/* 교환 내역 */}
+      {/* 획득 기프티콘 — 이벤트 TOP 3/럭키 좌석 당첨 시 즉시 지급 */}
       <section>
-        <h2 className="text-sm font-semibold text-text mb-3">리워드 교환 내역</h2>
+        <h2 className="text-sm font-semibold text-text mb-3">획득 기프티콘</h2>
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">날짜</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">리워드</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">사용 티켓</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">상품</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
-                  교환 내역이 없습니다.
+                  아직 획득한 기프티콘이 없습니다.
                 </td>
               </tr>
             </tbody>

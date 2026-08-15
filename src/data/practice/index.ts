@@ -1,6 +1,8 @@
 import type { VenueConfig } from '@/types/ticketing';
 import { CONCERT_HALL } from './concertHall';
 
+// 포스터 이미지: public/Img/practice/ 하위
+
 export interface PracticeEvent {
   id: string;
   eventId: number;     // 백엔드 eventId (랭킹/세션 API 파라미터)
@@ -12,6 +14,12 @@ export interface PracticeEvent {
   posterImage: string;
   sessions: { label: string; time: string }[];
   venue: VenueConfig;
+  /**
+   * 라이브 미리보기 모드에서만 사용.
+   * 지정 시 이 라벨 집합에 속한 좌석만 "선택 가능"으로 그리고,
+   * 나머지 좌석은 "미오픈"으로 표시 (실 라이브 회차 UX 재현).
+   */
+  liveSeatLabels?: string[];
 }
 
 /* ── 이벤트 2: 소규모 클럽 ── */
@@ -131,7 +139,7 @@ const ARENA: VenueConfig = {
   mapGrid: [], // StadiumMap이 zone id 기반으로 커스텀 렌더하므로 미사용
 };
 
-export const PRACTICE_EVENTS: PracticeEvent[] = [
+const BASE_PRACTICE_EVENTS: PracticeEvent[] = [
   {
     id: 'hall-a',
     eventId: 1,
@@ -140,7 +148,7 @@ export const PRACTICE_EVENTS: PracticeEvent[] = [
     period: '2026.08.01 ~ 2026.08.31',
     posterBg: '#0B1628',
     posterAccent: '#3B6BCC',
-    posterImage: '/Img/1.png',
+    posterImage: '/Img/practice/1.png',
     sessions: [
       { label: '1회 18:00', time: '18시 00분' },
       { label: '2회 21:00', time: '21시 00분' },
@@ -155,7 +163,7 @@ export const PRACTICE_EVENTS: PracticeEvent[] = [
     period: '2026.08.05 ~ 2026.08.10',
     posterBg: '#0A1A12',
     posterAccent: '#2D7A4F',
-    posterImage: '/Img/2.png',
+    posterImage: '/Img/practice/2.png',
     sessions: [
       { label: '1회 20:00', time: '20시 00분' },
     ],
@@ -169,11 +177,17 @@ export const PRACTICE_EVENTS: PracticeEvent[] = [
     period: '2026.08.15 ~ 2026.08.16',
     posterBg: '#180A04',
     posterAccent: '#C14B1A',
-    posterImage: '/Img/3.png',
+    posterImage: '/Img/practice/3.png',
     sessions: [
       { label: '1회 17:00', time: '17시 00분' },
       { label: '2회 20:00', time: '20시 00분' },
     ],
     venue: ARENA,
   },
+];
+
+// 연습 모드는 자체 정의 3종(BASE_PRACTICE_EVENTS)만 노출.
+// 라이브 공연(LIVE_EVENTS)은 실 라이브 페이지 전용으로 분리 — 연습 리스트에 자동 편입 안 함.
+export const PRACTICE_EVENTS: PracticeEvent[] = [
+  ...BASE_PRACTICE_EVENTS,
 ];

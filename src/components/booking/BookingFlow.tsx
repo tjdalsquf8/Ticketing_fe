@@ -1,11 +1,16 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { VenueConfig, SelectedSeat } from '@/types/ticketing';
 import CaptchaModal  from './CaptchaModal';
 import ZoneMap       from './ZoneMap';
 import StadiumMap    from './StadiumMap';
+import ArenaRingMap  from './ArenaRingMap';
+import BaseballDiamondMap from './BaseballDiamondMap';
+import StadiumOvalMap from './StadiumOvalMap';
+import ProsceniumMap from './ProsceniumMap';
+import FestivalMap   from './FestivalMap';
 import SeatGrid      from './SeatGrid';
 import SelectionPanel from './SelectionPanel';
 import { apiFetch, ROUTES } from '@/lib/api';
@@ -49,11 +54,23 @@ interface Props {
   skipCaptcha?: boolean;
   resultPath?: string;
   onBack?:     () => void;
+  /**
+   * 라이브 미리보기 모드. 지정 시:
+   * - 이 배열에 속한 좌석만 선택 가능
+   * - 나머지 좌석은 "미오픈"으로 표시 (라이브 회차에 열리지 않은 좌석)
+   * - 랜덤 예매완료 시뮬레이션 비활성화 (실 라이브 회차 UX 그대로 재현)
+   */
+  liveSeatLabels?: string[];
 }
 
 export default function BookingFlow({
   venue, meta, mode, sessionId, startedAt, skipCaptcha = false, resultPath, onBack,
+  liveSeatLabels,
 }: Props) {
+  const liveSeatSet = useMemo(
+    () => (liveSeatLabels && liveSeatLabels.length > 0 ? new Set(liveSeatLabels) : null),
+    [liveSeatLabels],
+  );
   const router = useRouter();
   const [step,         setStep]         = useState<Step>(skipCaptcha ? 'zone' : 'captcha');
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null);
@@ -96,20 +113,53 @@ export default function BookingFlow({
   const handleCaptchaCancel  = () => onBack?.();
 
   const handleSelectZone = useCallback((zoneId: string) => {
-    // 진입할 때마다 랜덤 예매완료 좌석 생성 (~35%)
     const zone = venue.zones.find(z => z.id === zoneId);
-    const taken = new Set<string>();
-    if (zone?.type === 'seated' && zone.seatRows) {
-      zone.seatRows.forEach(row => {
-        for (let col = 1; col <= row.seatCount; col++) {
-          if (Math.random() < 0.35) taken.add(`${zoneId}-${row.label}-${col}`);
-        }
+    if (!zone) return;
+
+    // 구역 지정 예매 모드: 좌석 그리드 스킵, 구역 자체를 예매 단위로 selected에 추가
+    if (zone.entryMode === 'zone') {
+      const seatId = `${zoneId}-ZONE`;
+      setSelected(prev => {
+        if (prev.some(s => s.id === seatId)) return prev;
+        if (prev.length >= MAX_SEATS) return prev;
+        return [
+          ...prev,
+          {
+            id: seatId,
+            zoneId: zone.id,
+            zoneName: zone.name,
+            tier: zone.tier,
+            label: `${zone.name} 구역`,
+          },
+        ];
       });
+      return;
+    }
+
+    // 좌석 상태 계산.
+    //  - 라이브 미리보기(liveSeatSet 있음): live에 포함 안 된 좌석 = "미오픈" (선택 불가)
+    //  - 연습 모드: 랜덤 ~35% 예매완료 시뮬레이션
+    const taken = new Set<string>();
+    if (zone.type === 'seated' && zone.seatRows) {
+      if (liveSeatSet) {
+        zone.seatRows.forEach(row => {
+          for (let col = 1; col <= row.seatCount; col++) {
+            const id = `${zoneId}-${row.label}-${col}`;
+            if (!liveSeatSet.has(id)) taken.add(id);
+          }
+        });
+      } else {
+        zone.seatRows.forEach(row => {
+          for (let col = 1; col <= row.seatCount; col++) {
+            if (Math.random() < 0.35) taken.add(`${zoneId}-${row.label}-${col}`);
+          }
+        });
+      }
     }
     setBookedSeats(taken);
     setActiveZoneId(zoneId);
     setStep('seats');
-  }, [venue.zones]);
+  }, [venue.zones, liveSeatSet]);
 
   const handleViewAll = () => {
     setActiveZoneId(null);
@@ -227,9 +277,13 @@ export default function BookingFlow({
         {/* 좌석 영역 */}
         <div className="flex-1 min-w-0">
           {(step === 'zone' || step === 'done') && !activeZoneId && (
-            venue.layout === 'auditorium'
-              ? <StadiumMap venue={venue} onSelectZone={handleSelectZone} />
-              : <ZoneMap    venue={venue} onSelectZone={handleSelectZone} />
+            venue.layout === 'auditorium'    ? <StadiumMap         venue={venue} onSelectZone={handleSelectZone} />
+            : venue.layout === 'arena-ring'  ? <ArenaRingMap       venue={venue} onSelectZone={handleSelectZone} />
+            : venue.layout === 'baseball'    ? <BaseballDiamondMap venue={venue} onSelectZone={handleSelectZone} />
+            : venue.layout === 'stadium-oval' ? <StadiumOvalMap    venue={venue} onSelectZone={handleSelectZone} />
+            : venue.layout === 'proscenium'  ? <ProsceniumMap     venue={venue} onSelectZone={handleSelectZone} />
+            : venue.layout === 'festival'    ? <FestivalMap        venue={venue} onSelectZone={handleSelectZone} />
+            :                                   <ZoneMap           venue={venue} onSelectZone={handleSelectZone} />
           )}
           {step === 'seats' && activeZone && (
             <SeatGrid
@@ -239,6 +293,7 @@ export default function BookingFlow({
               bookedSeats={bookedSeats}
               onToggle={handleToggleSeat}
               layout={venue.layout}
+              unavailableLabel={liveSeatSet ? '미오픈' : undefined}
             />
           )}
           {step === 'done' && mode === 'practice' && (

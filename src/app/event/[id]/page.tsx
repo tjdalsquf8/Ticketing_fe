@@ -1,320 +1,189 @@
-'use client';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { getMockEvent, getEventStatus, getEventClosesAt } from '@/data/mockEvents';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+export const metadata: Metadata = { title: '이벤트 상세' };
 
-const BLUE = '#1D4ED8';
+/* ──────────────────────────────────────────
+   /event/[id] — 이벤트 상세 (무료·유료 공용)
+   ─ type=live: "대기실 입장"
+   ─ type=paid: 미참여 → "참여 신청 (500P)" · 참여 완료 → "대기실 입장"
+   ────────────────────────────────────────── */
 
-const EVENT = {
-  id: 'e001',
-  title: '싸이홈빽쇼 SUMMERSWAG2026 - 수원',
-  subtitle: '콘서트 주간 19위',
-  venue: '수원월드컵경기장 보조경기장',
-  period: '2026.08.01 ~2026.08.02',
-  ageLimit: '전체관람가',
-  prices: [
-    { tier: '스탠딩SR', price: 185_000 },
-    { tier: '스탠딩R',  price: 175_000 },
-    { tier: '지정석',   price: 185_000 },
-  ],
-  availableDates: ['2026-08-01', '2026-08-02'],
-  sessions: {
-    '2026-08-01': [
-      { label: '1회 18:00', time: '18시 00분' },
-    ],
-    '2026-08-02': [
-      { label: '1회 18:00', time: '18시 00분' },
-    ],
-  } as Record<string, { label: string; time: string }[]>,
-  relatedShows: [
-    { title: '싸이홈빽쇼 SUMMERSWAG2026 - 광주', date: '2026.08.08' },
-  ],
+const STATUS_BADGE: Record<'scheduled' | 'open' | 'closed', { text: string; cls: string }> = {
+  scheduled: { text: '오픈 예정', cls: 'badge-info' },
+  open:      { text: '진행 중',   cls: 'badge-danger' },
+  closed:    { text: '종료',      cls: 'badge-neutral' },
 };
 
-const CAL_YEAR  = 2026;
-const CAL_MONTH = 8;
-const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
-
-function buildCalendar(year: number, month: number) {
-  const first   = new Date(year, month - 1, 1).getDay();
-  const daysInM = new Date(year, month, 0).getDate();
-  return { first, daysInM };
+function formatDateTime(d: Date): string {
+  return d.toLocaleString('ko-KR', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  });
 }
 
-export default function EventDetailPage() {
-  const router = useRouter();
-  const [selectedDate,    setSelectedDate]    = useState<string | null>(null);
-  const [selectedSession, setSelectedSession] = useState<number | null>(null);
-  const [calOpen,         setCalOpen]         = useState(true);
-  const [sessionOpen,     setSessionOpen]     = useState(true);
+// 뼈대: 실제로는 GET /events/:id/entries/me
+const MOCK_ALREADY_ENTERED = false;
 
-  const { first, daysInM } = buildCalendar(CAL_YEAR, CAL_MONTH);
-  const sessions = selectedDate ? (EVENT.sessions[selectedDate] ?? []) : [];
+export default async function EventDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const event = getMockEvent(id);
+  const opensAt = event.opensAtFn();
+  const closesAt = getEventClosesAt(opensAt);
+  const status = getEventStatus(opensAt);
+  const st = STATUS_BADGE[status];
 
-  const handleBooking = () => {
-    if (!selectedDate || selectedSession === null) return;
-    const sess = sessions[selectedSession];
-    router.push(
-      `/event/${EVENT.id}/wait?date=${encodeURIComponent(selectedDate)}&time=${encodeURIComponent(sess.time)}`
-    );
-  };
+  const isPaid = event.type === 'paid';
+  const isClosed = status === 'closed';
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 bg-white">
-      {/* 배지 */}
-      <div className="flex gap-2 mb-3">
-        <span className="inline-flex items-center gap-1 border border-[#1D4ED8] text-[#1D4ED8] text-xs px-2 py-0.5 rounded-sm font-medium">
-          단독판매
-        </span>
-        <span className="inline-flex items-center gap-1 border border-[#94A3B8] text-[#64748B] text-xs px-2 py-0.5 rounded-sm">
-          안심예매 ⓘ
-        </span>
-      </div>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
 
-      <h1 className="text-2xl font-bold text-[#111827]">{EVENT.title}</h1>
-      <p className="text-sm text-[#6B7280] mt-1">{EVENT.subtitle}</p>
+      {/* 헤더 */}
+      <header className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="badge badge-primary">{event.category}</span>
+          <span className={`badge ${st.cls}`}>{st.text}</span>
+          <span className="text-xs text-text-tertiary font-mono-tabular">#{event.id}</span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-bold text-text leading-tight">
+          {event.title}
+        </h1>
+        <p className="text-sm text-text-secondary">{event.venue}</p>
+      </header>
 
-      <div className="mt-5 flex flex-col lg:flex-row gap-6">
-        {/* ── 왼쪽: 포스터 + 이벤트 정보 ── */}
-        <div className="flex-1 flex flex-col sm:flex-row gap-6">
-          {/* 포스터 */}
-          <div
-            className="shrink-0 rounded border border-[#E5E7EB] bg-[#F3F4F6] flex items-center justify-center text-[#9CA3AF] text-xs"
-            style={{ width: 220, height: 280 }}
-          >
-            포스터 이미지
-          </div>
-
-          {/* 메타 정보 */}
-          <div className="flex-1 space-y-3 text-sm">
-            {/* 장소 */}
-            <div className="flex gap-4 py-2 border-b border-[#F3F4F6]">
-              <span className="w-20 shrink-0 text-[#6B7280]">장소</span>
-              <button className="text-[#111827] hover:underline text-left">
-                {EVENT.venue}▶
-              </button>
-            </div>
-
-            {/* 공연기간 */}
-            <div className="flex gap-4 py-2 border-b border-[#F3F4F6]">
-              <span className="w-20 shrink-0 text-[#6B7280]">공연기간</span>
-              <span className="text-[#111827]">{EVENT.period}</span>
-            </div>
-
-            {/* 관람연령 */}
-            <div className="flex gap-4 py-2 border-b border-[#F3F4F6]">
-              <span className="w-20 shrink-0 text-[#6B7280]">관람연령</span>
-              <span className="text-[#111827]">{EVENT.ageLimit}</span>
-            </div>
-
-            {/* 가격 */}
-            <div className="flex gap-4 py-2 border-b border-[#F3F4F6]">
-              <span className="w-20 shrink-0 text-[#6B7280]">가격</span>
-              <div className="space-y-1">
-                <button className="text-[#1D4ED8] text-xs hover:underline font-medium">
-                  전체가격보기 ▶
-                </button>
-                {EVENT.prices.map(p => (
-                  <p key={p.tier} className="text-[#111827]">
-                    <strong className="font-medium">{p.tier}</strong>{' '}
-                    {p.price.toLocaleString('ko-KR')}원
-                  </p>
-                ))}
-              </div>
-            </div>
-
-            {/* 혜택 */}
-            <div className="flex gap-4 py-2 border-b border-[#F3F4F6]">
-              <span className="w-20 shrink-0 text-[#6B7280]">혜택</span>
-              <div className="space-y-1">
-                <button className="text-[#111827] text-sm hover:underline">무이자할부▶</button>
-                <div>
-                  <button className="text-[#1D4ED8] text-xs hover:underline block text-left">
-                    <span className="text-[#E91E63] font-bold">NOL</span>카드 8만원 할인 쿠폰+2만원 캐시백 ▶
-                  </button>
-                </div>
-                <div>
-                  <button className="text-[#1D4ED8] text-xs hover:underline block text-left">
-                    <span className="text-[#FF6B00] font-bold">t</span>oping 가입하고 중복할인 쿠폰받기 ▶
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 배송 */}
-            <div className="flex gap-4 py-2">
-              <span className="w-20 shrink-0 text-[#6B7280]">배송</span>
-              <div className="text-[#111827] text-sm space-y-0.5">
-                <p>일괄배송: 7월 09일(목) ~ 7월 15일(수), 5일간</p>
-                <button className="text-[#1D4ED8] text-xs hover:underline">배송주소 확인 ▶</button>
-              </div>
-            </div>
+      <div className="grid md:grid-cols-[280px_1fr] gap-6">
+        {/* 포스터 */}
+        <div
+          className="aspect-[3/4] rounded-xl flex items-center justify-center relative"
+          style={{ backgroundColor: event.posterColor }}
+        >
+          <span className="text-6xl font-black text-white/90 tracking-tight select-none">
+            {event.posterInitial}
+          </span>
+          <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-md bg-white/15 backdrop-blur-sm text-[11px] font-medium text-white">
+            POSTER
           </div>
         </div>
 
-        {/* ── 오른쪽: 관람일 + 회차 + 버튼 ── */}
-        <div className="lg:w-[290px] shrink-0 space-y-2">
-          <div className="border border-[#E5E7EB] rounded">
-            {/* 관람일 */}
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="font-semibold text-sm text-[#111827]">관람일</span>
-                <button
-                  onClick={() => setCalOpen(v => !v)}
-                  className="text-[#9CA3AF] text-base leading-none"
-                >
-                  {calOpen ? '∧' : '∨'}
-                </button>
-              </div>
-
-              {calOpen && (
-                <>
-                  {/* 월 헤더 */}
-                  <div className="flex items-center justify-between mb-3">
-                    <button className="text-[#6B7280] px-1 hover:text-[#111827]">‹</button>
-                    <span className="text-sm font-semibold text-[#111827]">
-                      {CAL_YEAR}. {String(CAL_MONTH).padStart(2, '0')}
-                    </span>
-                    <button className="text-[#6B7280] px-1 hover:text-[#111827]">›</button>
-                  </div>
-
-                  {/* 요일 헤더 */}
-                  <div className="grid grid-cols-7 text-center mb-1">
-                    {DAY_LABELS.map((d, i) => (
-                      <span
-                        key={d}
-                        className={[
-                          'text-xs font-medium',
-                          i === 0 ? 'text-[#DC2626]' :
-                          i === 6 ? 'text-[#1D4ED8]' :
-                                    'text-[#9CA3AF]',
-                        ].join(' ')}
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* 날짜 그리드 */}
-                  <div className="grid grid-cols-7 gap-y-1 text-center">
-                    {Array.from({ length: first }).map((_, i) => (
-                      <div key={`e${i}`} />
-                    ))}
-                    {Array.from({ length: daysInM }, (_, i) => {
-                      const d   = i + 1;
-                      const key = `${CAL_YEAR}-${String(CAL_MONTH).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                      const avail = EVENT.availableDates.includes(key);
-                      const sel   = selectedDate === key;
-                      const dow   = (first + i) % 7;
-                      return (
-                        <button
-                          key={d}
-                          disabled={!avail}
-                          onClick={() => { setSelectedDate(key); setSelectedSession(null); }}
-                          className={[
-                            'text-xs py-1 rounded-full mx-auto w-7 h-7 flex items-center justify-center font-medium transition-colors',
-                            sel
-                              ? 'text-white'
-                              : avail
-                              ? 'font-semibold hover:bg-blue-50'
-                              : 'cursor-not-allowed opacity-40',
-                            !sel && dow === 0 ? 'text-[#DC2626]' :
-                            !sel && dow === 6 ? 'text-[#1D4ED8]' :
-                            !sel             ? 'text-[#111827]'  : '',
-                          ].join(' ')}
-                          style={sel ? { backgroundColor: BLUE } : undefined}
-                        >
-                          {d}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 회차 */}
-            {selectedDate && (
+        {/* 정보 + CTA */}
+        <div className="space-y-6">
+          {/* 이벤트 정보 */}
+          <div className="card p-5 space-y-3 text-sm">
+            <InfoRow label="공연장" value={event.venue} />
+            <InfoRow label="오픈"   value={formatDateTime(opensAt)} mono />
+            <InfoRow label="종료"   value={formatDateTime(closesAt)} mono />
+            <InfoRow label="좌석"   value={`${event.totalSeats.toLocaleString()}석`} mono />
+            <InfoRow label="진행"   value="오픈 후 5분간" />
+            {isPaid && (
               <>
-                <div className="border-t border-[#E5E7EB]" />
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-sm text-[#111827]">회차</span>
-                    <button
-                      onClick={() => setSessionOpen(v => !v)}
-                      className="text-[#9CA3AF] text-base leading-none"
-                    >
-                      {sessionOpen ? '∧' : '∨'}
-                    </button>
-                  </div>
-
-                  {sessionOpen && (
-                    <div className="space-y-2">
-                      {sessions.map((s, i) => {
-                        const sel = selectedSession === i;
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => setSelectedSession(i)}
-                            className="w-full rounded border px-3 py-2.5 text-left transition-colors"
-                            style={{
-                              borderColor: sel ? BLUE : '#E5E7EB',
-                              backgroundColor: sel ? '#EFF6FF' : '#FFFFFF',
-                            }}
-                          >
-                            <p
-                              className="text-sm font-semibold"
-                              style={{ color: sel ? BLUE : '#111827' }}
-                            >
-                              {s.label}
-                            </p>
-                            <p className="text-xs text-[#9CA3AF] mt-0.5">
-                              스탠딩SR 0석 / 스탠딩R 0석 / 지정석 0석
-                            </p>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                <InfoRow label="참여비" value={`${event.entryFeePoints!.toLocaleString()}P (또는 티켓 ${event.entryFeeTickets}매)`} mono />
+                <InfoRow label="상품"   value={event.prize!} />
               </>
             )}
           </div>
 
-          {/* 예매하기 */}
-          <button
-            onClick={handleBooking}
-            disabled={!selectedDate || selectedSession === null}
-            className="w-full py-3.5 rounded font-bold text-base text-white transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: BLUE }}
-          >
-            예매하기
-          </button>
+          {/* 참여 CTA */}
+          <div className="card p-5 space-y-3">
+            <CTASection
+              event={event}
+              status={status}
+              alreadyEntered={MOCK_ALREADY_ENTERED}
+            />
+          </div>
 
-          {/* BOOKING / 外國語 */}
-          <button
-            className="w-full py-3 rounded border font-bold text-sm transition-colors hover:bg-blue-50"
-            style={{ borderColor: BLUE, color: BLUE }}
-          >
-            BOOKING / 外國語
-          </button>
+          {/* 규칙 요약 */}
+          <div className="card p-5 space-y-2 bg-bg-subtle">
+            <h3 className="text-sm font-semibold text-text">참여 규칙</h3>
+            <ul className="text-xs text-text-secondary space-y-1 list-disc list-inside">
+              <li>이벤트는 오픈 시각부터 <strong className="text-text">5분간</strong> 진행됩니다.</li>
+              {event.type === 'live' ? (
+                <>
+                  <li>성공한 사람 중 소요 시간 <strong className="text-text">TOP 10 회원</strong>에게 티켓 1매가 지급됩니다.</li>
+                  <li>게스트도 참여 가능하지만 티켓 지급 대상은 회원 전용입니다.</li>
+                </>
+              ) : (
+                <>
+                  <li>성공한 사람 중 소요 시간 <strong className="text-text">TOP 3</strong>에게 기프티콘이 즉시 지급됩니다.</li>
+                  <li>참여비는 오픈 전까지 취소 시 전액 환불됩니다.</li>
+                </>
+              )}
+            </ul>
+          </div>
         </div>
       </div>
 
-      {/* 관련공연 */}
-      {EVENT.relatedShows.length > 0 && (
-        <div className="mt-8 border-t border-[#E5E7EB] pt-4">
-          <p className="text-sm font-semibold text-[#111827] mb-3">관련공연</p>
-          <div className="space-y-2">
-            {EVENT.relatedShows.map((show, i) => (
-              <div key={i} className="border border-[#E5E7EB] rounded px-4 py-3">
-                <p className="text-sm text-[#111827]">{show.title}</p>
-                <p className="text-xs text-[#9CA3AF] mt-0.5">{show.date}</p>
-              </div>
-            ))}
-          </div>
+      {isClosed && (
+        <div className="card p-5 text-center text-sm text-text-secondary">
+          이 이벤트는 종료되었습니다. <Link href={`/event/${id}/result`} className="text-primary font-semibold hover:underline">결과 보기 →</Link>
         </div>
       )}
     </div>
+  );
+}
+
+// ── 컴포넌트 ────────────────────────────────────────────
+
+function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex gap-4 py-1.5">
+      <span className="w-16 shrink-0 text-text-tertiary text-xs">{label}</span>
+      <span className={['text-text flex-1', mono ? 'font-mono-tabular' : ''].join(' ')}>{value}</span>
+    </div>
+  );
+}
+
+function CTASection({
+  event,
+  status,
+  alreadyEntered,
+}: {
+  event: ReturnType<typeof getMockEvent>;
+  status: 'scheduled' | 'open' | 'closed';
+  alreadyEntered: boolean;
+}) {
+  const isPaid = event.type === 'paid';
+
+  // 종료된 이벤트
+  if (status === 'closed') {
+    return (
+      <Link href={`/event/${event.id}/result`} className="btn btn-neutral btn-lg w-full">
+        결과 보기
+      </Link>
+    );
+  }
+
+  // 유료 미참여
+  if (isPaid && !alreadyEntered) {
+    return (
+      <>
+        <Link href={`/event/${event.id}/checkout`} className="btn btn-solid btn-lg w-full">
+          참여 신청 ({event.entryFeePoints!.toLocaleString()}P)
+        </Link>
+        <p className="text-[11px] text-text-tertiary text-center">
+          로그인이 필요합니다. 참여비는 오픈 전까지 전액 환불됩니다.
+        </p>
+      </>
+    );
+  }
+
+  // 무료 or 유료 참여 완료 → 대기실
+  return (
+    <>
+      <Link href={`/event/${event.id}/wait`} className="btn btn-solid btn-lg w-full">
+        {status === 'open' ? '지금 입장하기' : '대기실 입장'}
+      </Link>
+      {isPaid && alreadyEntered && (
+        <p className="text-[11px] text-success-text text-center font-medium">
+          ✓ 참여 신청 완료 · 오픈 시각에 대기실이 자동으로 열립니다
+        </p>
+      )}
+    </>
   );
 }

@@ -34,6 +34,23 @@ export const ROUTES = {
       `${BASE_URL}/practice/sessions/${sessionId}/complete`,
   },
   rankings: `${BASE_URL}/rankings`,
+  time: `${BASE_URL}/time`,
+  live: {
+    current: `${BASE_URL}/live/current`,
+    next: `${BASE_URL}/live/next`,
+    recentResults: (limit = 3) =>
+      `${BASE_URL}/live/recent-results?limit=${limit}`,
+  },
+  admin: {
+    liveConfig: `${BASE_URL}/admin/live/config`,
+    liveConfigEvent: `${BASE_URL}/admin/live/config/event`,
+    liveConfigSchedule: `${BASE_URL}/admin/live/config/schedule`,
+    liveRounds: `${BASE_URL}/admin/live/rounds`,
+    liveRoundDetail: (roundId: number | string) =>
+      `${BASE_URL}/admin/live/rounds/${roundId}/detail`,
+    liveRoundCancel: (roundId: number | string) =>
+      `${BASE_URL}/admin/live/rounds/${roundId}/cancel`,
+  },
 };
 
 // 게스트 UUID는 백엔드가 HttpOnly `guest_uuid` 쿠키로 관리 (JS 접근 불가).
@@ -80,18 +97,39 @@ export async function apiFetch<T>(
   _retry = false,
 ): Promise<T> {
   const hasBody = body !== undefined;
+  const isMutating = method !== "GET";
+  // CSRF 심층 방어:
+  //  1) 백엔드 쿠키는 SameSite=strict → cross-site 자동 전송 차단(주 방어)
+  //  2) 상태 변경 요청에 커스텀 헤더 X-Requested-With 부착
+  //     → CORS "simple request" 조건을 벗어나 브라우저가 preflight OPTIONS를 강제
+  //     → 백엔드 CORS 화이트리스트가 오리진을 검증 가능
+  //     → 백엔드에서 이 헤더 부재 요청은 거부하도록 확장 가능
+  //  3) body가 없는 PATCH/DELETE(예: cancelRound)는 Content-Type이 없어
+  //     preflight가 걸리지 않는 케이스를 이 헤더가 커버함.
   const headers: HeadersInit = {
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(isMutating ? { "X-Requested-With": "XMLHttpRequest" } : {}),
     ...extraHeaders,
   };
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    credentials: "include",
-    ...(hasBody ? { body: JSON.stringify(body) } : {}),
-    ...rest,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      credentials: "include",
+      ...(hasBody ? { body: JSON.stringify(body) } : {}),
+      ...rest,
+    });
+  } catch {
+    // fetch가 throw하는 경우 = 네트워크 실패 / CORS 차단 / DNS 오류 / 서버 다운.
+    // 응답 자체가 없으므로 status를 0으로 두고 명시적 코드로 통일 → caller가 원인 판별 가능.
+    throw new ApiError(
+      getErrorMessage('NETWORK_ERROR'),
+      'NETWORK_ERROR',
+      0,
+    );
+  }
 
   if (res.ok) {
     const json = (await res.json()) as SuccessEnvelope<T> | { success?: unknown };
@@ -120,6 +158,7 @@ export async function apiFetch<T>(
         const refreshRes = await fetch(ROUTES.auth.refresh, {
           method: "POST",
           credentials: "include",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
         });
         if (refreshRes.ok) {
           return apiFetch<T>(url, { method, body, headers: extraHeaders, ...rest }, true);
@@ -134,9 +173,27 @@ export async function apiFetch<T>(
     );
   }
 
-  // 5xx는 백엔드 원본 메시지 노출 금지 (내부 정보 유출 방지)
-  const fallback = res.status >= 500
-    ? getErrorMessage('INTERNAL_ERROR')
-    : (envelope.error?.message ?? `요청 실패 (${res.status})`);
+  // 5xx는 백엔드 원본 메시지 노출 금지 (내부 정보 유출 방지).
+  // 4xx 중 매핑되지 않은 code도 프로덕션에서는 원본 메시지 대신 generic으로 마스킹.
+  // 개발 환경에서는 디버깅을 위해 원본 메시지 통과.
+  const isDev = process.env.NODE_ENV !== 'production';
+  let fallback: string;
+  if (res.status >= 500) {
+    fallback = getErrorMessage('INTERNAL_ERROR');
+  } else if (code && ERROR_MESSAGES_HAS(code)) {
+    // 매핑된 코드는 아래 getErrorMessage에서 사용자 문구로 치환됨.
+    fallback = envelope.error?.message ?? `요청 실패 (${res.status})`;
+  } else {
+    // 매핑되지 않은 4xx 코드: 백엔드 스택/제약 메시지가 그대로 노출되지 않도록 마스킹.
+    fallback = isDev
+      ? (envelope.error?.message ?? `요청 실패 (${res.status})`)
+      : `요청을 처리할 수 없습니다 (${res.status})`;
+  }
   throw new ApiError(getErrorMessage(code, fallback), code ?? 'UNKNOWN', res.status);
+}
+
+// getErrorMessage와 동일한 내부 맵을 공유할 수 없어(export 안 됨) 별도 검사 함수.
+// 코드가 알려진 매핑에 있으면 true를 반환.
+function ERROR_MESSAGES_HAS(code: string): boolean {
+  return getErrorMessage(code, '__unmapped__') !== '__unmapped__';
 }

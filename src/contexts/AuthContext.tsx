@@ -20,6 +20,12 @@ interface User {
   id: string;
   email: string;
   name: string;
+  /**
+   * 백엔드가 반환하는 권한 등급. 미포함 시 일반 사용자로 취급.
+   * 관리자 판별은 최종적으로 백엔드 `requireAdmin`이 담당하며,
+   * FE는 UI 노출 통제 목적으로만 사용한다.
+   */
+  role?: 'user' | 'admin';
 }
 
 interface AuthContextValue {

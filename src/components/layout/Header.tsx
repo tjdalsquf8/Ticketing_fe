@@ -12,10 +12,14 @@ import {
 
 const NAV = [
   { href: '/',         label: '홈'       },
-  { href: '/practice', label: '연습 모드' },
+  { href: '/live',     label: '실시간'   },
+  { href: '/event',    label: '이벤트'   },
+  { href: '/practice', label: '연습'     },
   { href: '/ranking',  label: '랭킹'     },
-  { href: '/rewards',  label: '리워드'   },
 ];
+
+// 뼈대: 실제 잔액은 AuthContext / 별도 훅으로 대체 예정
+const MOCK_POINTS = 3_000;
 
 export default function Header() {
   const pathname = usePathname();
@@ -135,6 +139,14 @@ export default function Header() {
         <div className="flex items-center gap-2 shrink-0">
           {user ? (
             <>
+              <Link
+                href="/my/points"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary-subtle border border-primary-border text-xs font-semibold text-primary hover:bg-primary-subtle/70 transition-colors"
+                title="포인트 충전"
+              >
+                <span className="font-mono-tabular">{MOCK_POINTS.toLocaleString()}</span>
+                <span>P</span>
+              </Link>
               <Link
                 href="/my"
                 className="btn btn-neutral btn-sm hidden sm:inline-flex"

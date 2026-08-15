@@ -333,4 +333,12 @@ h1, h2, h3, h4, h5, h6 {
   .text-brand {
     color: var(--color-primary);
   }
+  /* 가로 스크롤 캐러셀용 — 스크롤바 숨김 (Firefox / IE / WebKit) */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
