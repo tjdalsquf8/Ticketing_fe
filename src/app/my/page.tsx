@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch, ROUTES } from '@/lib/api';
+import { getMyTickets } from '@/lib/tickets';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface UserProfile {
@@ -12,8 +13,7 @@ interface UserProfile {
   created_at: string;
 }
 
-// 백엔드 연동 전까지 정적 mock
-const TICKET_COUNT = 0;
+// 리더보드 순위는 아직 백엔드 API 미구현.
 const LEADERBOARD_RANK: number | null = null;
 
 export default function MyPage() {
@@ -22,12 +22,30 @@ export default function MyPage() {
   const [profile, setProfile]   = useState<UserProfile | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError]       = useState<string | null>(null);
+  // 누적 티켓 수는 GET /api/tickets/me 응답의 meta.totalCount 로 확인.
+  // size=1 로 페이로드 최소화 (실제 티켓 목록은 /my/tickets 에서 별도 조회).
+  const [ticketCount, setTicketCount] = useState<number | null>(null);
 
   useEffect(() => {
     apiFetch<UserProfile>(ROUTES.users.me)
       .then(setProfile)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : '정보를 불러올 수 없습니다.'))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    getMyTickets({ page: 1, limit: 1 })
+      .then(({ meta }) => {
+        if (!alive) return;
+        setTicketCount(meta?.totalCount ?? 0);
+      })
+      .catch(() => {
+        // 미로그인·네트워크 실패 등 조용히 무시. 티켓 수는 "—" 로 표시.
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const displayName = profile?.name ?? '—';
@@ -57,13 +75,21 @@ export default function MyPage() {
 
         {/* 통계 스탯 — 누적 티켓 / 리더보드 순위 */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
-            <p className="text-xs text-text-secondary">누적 티켓</p>
+          <Link
+            href="/my/tickets"
+            className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
+          >
+            <p className="text-xs text-text-secondary flex items-center justify-between">
+              <span>누적 티켓</span>
+              <span className="text-primary text-sm leading-none">›</span>
+            </p>
             <p className="mt-1 font-mono-tabular">
-              <strong className="text-2xl text-text">{TICKET_COUNT}</strong>
+              <strong className="text-2xl text-text">
+                {ticketCount ?? '—'}
+              </strong>
               <span className="text-sm text-text-tertiary ml-1">매</span>
             </p>
-          </div>
+          </Link>
           <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
             <p className="text-xs text-text-secondary">리더보드 순위</p>
             <p className="mt-1 font-mono-tabular">
