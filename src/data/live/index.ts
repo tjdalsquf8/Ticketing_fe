@@ -53,7 +53,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 K-POP GRAND CONCERT — KSPO돔',
     category: '콘서트',
     venueName: 'KSPO돔 (올림픽공원 체조경기장)',
-    posterImage: '/Img/live/1.png',
+    posterImage: '/Img/live/kspo-dome.png',
     totalSeats: 14594,
     liveSeatsPerZone: 40,
     opensAtFn: nextHour,
@@ -68,7 +68,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 SUMMER SONIC — 고척스카이돔',
     category: '콘서트',
     venueName: '고척스카이돔',
-    posterImage: '/Img/live/2.png',
+    posterImage: '/Img/live/gocheok-skydome.png',
     totalSeats: 25000,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -84,7 +84,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 SEOUL SUMMER LIVE — 잠실 야구장',
     category: '콘서트',
     venueName: '잠실 야구장',
-    posterImage: '/Img/live/3.png',
+    posterImage: '/Img/live/jamsil-baseball.png',
     totalSeats: 30000,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -100,7 +100,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 INCHEON WAVE FESTIVAL — SSG랜더스필드',
     category: '콘서트',
     venueName: '인천 SSG랜더스필드',
-    posterImage: '/Img/live/4.png',
+    posterImage: '/Img/live/ssg-landers.png',
     totalSeats: 25000,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -117,7 +117,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 GLOBAL K-POP AWARDS — 인스파이어 아레나',
     category: '콘서트',
     venueName: '인스파이어 아레나',
-    posterImage: '/Img/live/5.png',
+    posterImage: '/Img/live/inspire-arena.png',
     totalSeats: 7143,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -133,7 +133,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 WORLD TOUR FINAL — 잠실 주경기장',
     category: '콘서트',
     venueName: '잠실 종합운동장 주경기장',
-    posterImage: '/Img/live/6.png',
+    posterImage: '/Img/live/jamsil-olympic-main.png',
     totalSeats: 45000,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -149,7 +149,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '뮤지컬 팬텀 오브 디 오페라 — 블루스퀘어',
     category: '뮤지컬',
     venueName: '블루스퀘어 대극장',
-    posterImage: '/Img/live/7.png',
+    posterImage: '/Img/live/bluesquare.png',
     totalSeats: 1767,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -165,7 +165,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 세종 크로스오버 콘서트 — 세종문화회관',
     category: '콘서트',
     venueName: '세종문화회관 대극장',
-    posterImage: '/Img/live/8.png',
+    posterImage: '/Img/live/sejong-grand.png',
     totalSeats: 3022,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -181,7 +181,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '인디밴드 페스티벌 — YES24 라이브홀',
     category: '콘서트',
     venueName: 'YES24 라이브홀',
-    posterImage: '/Img/live/9.png',
+    posterImage: '/Img/live/yes24-livehall.png',
     totalSeats: 1051,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -197,7 +197,7 @@ export const LIVE_EVENTS: LiveEvent[] = [
     title: '2026 SEOUL RIVER FEST — 한강 페스티벌',
     category: '페스티벌',
     venueName: '한강 페스티벌 필드',
-    posterImage: '/Img/live/10.png',
+    posterImage: '/Img/live/hangang-festival.png',
     totalSeats: 20000,
     liveSeatsPerZone: 30,
     opensAtFn: nextHour,
@@ -218,4 +218,12 @@ export function getLiveEvent(id: string): LiveEvent | null {
     return LIVE_EVENTS.find((e) => e.id === `${base}-1`) ?? null;
   }
   return null;
+}
+
+/**
+ * 백엔드 eventId 로 라이브 이벤트 조회. 백엔드 응답의 eventId 를 로컬 카탈로그와 매핑.
+ * 매핑 실패 시 null → UI 는 fallback(제네릭 카드) 표시.
+ */
+export function getLiveEventByEventId(eventId: number): LiveEvent | null {
+  return LIVE_EVENTS.find((e) => e.eventId === eventId) ?? null;
 }

@@ -562,14 +562,15 @@ function RoundDetailDrawer({
                 })()}
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <MiniStat label="대기"    value={detail.waitingCount} />
-                <MiniStat label="가용"    value={detail.seatsSummary.available} />
-                <MiniStat label="참여수"  value={participantCount} />
+              <div className="grid grid-cols-2 gap-2">
+                <MiniStat label="판매완료" value={detail.seatsSummary.sold} />
+                <MiniStat label="참여수"   value={participantCount} />
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-text-secondary mb-2">실시간 TOP 10</p>
+                <p className="text-xs font-semibold text-text-secondary mb-2">
+                  {detail.round.status === 'closed' ? '최종 TOP 10' : '실시간 TOP 10'}
+                </p>
                 {detail.top10.length === 0 ? (
                   <p className="text-xs text-text-tertiary">아직 완료된 세션이 없습니다.</p>
                 ) : (

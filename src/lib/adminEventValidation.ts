@@ -96,7 +96,7 @@ export type EventFormErrors = Partial<Record<keyof EventFormValues, string>>;
 
 /**
  * 폼 전체 검증. 에러 맵 반환 — 비어 있으면 통과.
- * 유료 타입일 때만 entryFee*/prize 검증.
+ * 유료 타입일 때만 entryFee 계열 및 prize 검증.
  */
 export function validateEventForm(v: EventFormValues): EventFormErrors {
   const errors: EventFormErrors = {};

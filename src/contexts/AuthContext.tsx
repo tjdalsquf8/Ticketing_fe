@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch, ROUTES } from "@/lib/api";
+import { deleteGuestMe, getGuestMe, postGuest } from "@/lib/guests";
 import {
   NICKNAME_CHANGE_COOLDOWN_MS,
   NICKNAME_MAX,
@@ -90,21 +91,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hasNicknameCache = !!localStorage.getItem(GUEST_NICKNAME_KEY);
       if (!isLoggedIn && !hasNicknameCache) {
         try {
-          const data = await apiFetch<{ guestUuid: string; nickname: string }>(
-            ROUTES.guests.me,
-          );
+          const data = await getGuestMe();
           if (data.nickname) {
             localStorage.setItem(GUEST_NICKNAME_KEY, data.nickname);
             setGuestNicknameState(data.nickname);
           }
         } catch {
-          // GUEST_NOT_FOUND(404) 또는 네트워크 실패 — 신규 방문자로 취급.
-          // 첫 세션 시작 시 백엔드가 UUID를 발급하고 쿠키를 세팅한다.
+          // GUEST_NOT_AUTHENTICATED(401)/GUEST_NOT_FOUND(404) 또는 네트워크 실패 — 신규 방문자로 취급.
+          // 라이브 참여 시 프롬프트에서 닉네임 입력 → POST /api/guests 로 신원 발급된다.
         }
       }
 
       setLoading(false);
     });
+  }, []);
+
+  // 다른 탭에서 게스트 닉네임을 변경한 경우 로컬 state 도 동기화.
+  // storage 이벤트는 다른 탭에서만 발화(현재 탭 setItem 은 트리거하지 않음)하므로
+  // 무한 루프 걱정 없음. 진행 중인 라이브 세션의 서버 신원은 이미 서버 쪽 UUID 로
+  // 확정되어 있어 UI 표기만 최신화하는 정도로 처리.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === GUEST_NICKNAME_KEY) {
+        setGuestNicknameState(e.newValue ?? '');
+      } else if (e.key === GUEST_NICKNAME_CHANGED_AT_KEY) {
+        if (e.newValue === null) {
+          setGuestNicknameChangedAt(null);
+        } else {
+          const n = Number(e.newValue);
+          setGuestNicknameChangedAt(Number.isFinite(n) && n > 0 ? n : null);
+        }
+      } else if (e.key === USER_KEY) {
+        if (e.newValue === null) {
+          setUser(null);
+        } else {
+          try {
+            setUser(JSON.parse(e.newValue) as User);
+          } catch {
+            /* 파싱 실패는 무시. 다음 페이지 로드에서 재하이드레이션. */
+          }
+        }
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   const guestNicknameCooldownUntil =
@@ -133,17 +164,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      // 쿨다운 통과 → 서버에 게스트 정체성 초기화 요청 (옛 guest_uuid 쿠키 삭제)
-      // 다음 세션 시작 시 백엔드가 새 UUID를 발급하고 새 닉네임으로 등록함.
-      // 실패 시 throw해서 사용자에게 알림 (로컬만 바꾸면 다음 세션에서 immutability로 원복됨)
-      await apiFetch<null>(ROUTES.guests.me, { method: 'DELETE' });
+      // 쿨다운 통과 → 옛 guest_uuid 쿠키 삭제 후 새 신원 발급.
+      // 실패 시 throw해서 사용자에게 알림 (로컬만 바꾸면 다음 세션에서 immutability로 원복됨).
+      await deleteGuestMe();
+    }
+
+    // 값이 있으면 서버에 게스트 신원 발급 요청 (POST /api/guests).
+    // 백엔드가 guest_uuid HttpOnly 쿠키를 세팅하므로 이후 연습·라이브 모두 이 쿠키로 통과.
+    // idempotent 하므로 쿠키가 이미 있으면 기존 UUID 그대로 반환.
+    // 서버가 nickname 을 최종 값(immutability)로 회신하니 그 값으로 로컬 반영.
+    let finalNickname = trimmed;
+    if (trimmed) {
+      try {
+        const guest = await postGuest(trimmed);
+        finalNickname = guest.nickname ?? trimmed;
+      } catch (err) {
+        // 네트워크·검증 실패 시 로컬만 갱신하면 이후 라이브 세션 시작에서 GUEST_NOT_AUTHENTICATED 로 실패한다.
+        // 사용자에게 명확히 알림.
+        throw err;
+      }
     }
 
     // 저장
     const now = Date.now();
-    if (trimmed) {
-      setGuestNicknameState(trimmed);
-      localStorage.setItem(GUEST_NICKNAME_KEY, trimmed);
+    if (finalNickname) {
+      setGuestNicknameState(finalNickname);
+      localStorage.setItem(GUEST_NICKNAME_KEY, finalNickname);
     } else {
       setGuestNicknameState('');
       localStorage.removeItem(GUEST_NICKNAME_KEY);
