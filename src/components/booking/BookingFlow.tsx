@@ -16,6 +16,14 @@ import SelectionPanel from './SelectionPanel';
 import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import TicketModal, { type TicketData } from './TicketModal';
+import { useLiveSeats } from '@/hooks/useLiveSeats';
+import { useServerTime } from '@/hooks/useServerTime';
+import {
+  holdSeat as apiHoldSeat,
+  confirmSeat as apiConfirmSeat,
+  type LiveConfirmResult,
+} from '@/lib/live';
+import { ApiError } from '@/lib/errors';
 
 /* ─────────────────────────────────────────────────────────
    BookingFlow — 인터파크 스타일 예매 플로우
@@ -40,6 +48,15 @@ interface BookingMeta {
   time:       string;   // "18시 00분"
 }
 
+interface LiveModeConfig {
+  /** POST /sessions 로 발급된 활성 세션 ID */
+  sessionId: string;
+  /** 회차 ID (완료 시 sessionStorage 정리 및 결과 매핑용) */
+  roundId: number;
+  /** confirm 성공 시 상위(RoundDetailClient)로 결과 전달 */
+  onConfirmed?: (result: LiveConfirmResult, seatLabel: string) => void;
+}
+
 interface Props {
   venue:       VenueConfig;
   meta:        BookingMeta;
@@ -61,18 +78,31 @@ interface Props {
    * - 랜덤 예매완료 시뮬레이션 비활성화 (실 라이브 회차 UX 그대로 재현)
    */
   liveSeatLabels?: string[];
+  /**
+   * 실전 라이브 모드. 지정 시:
+   * - CAPTCHA / 랜덤 taken 시뮬레이션 스킵
+   * - useLiveSeats 로 좌석 상태 구독 (2초 폴링)
+   * - 좌석 클릭 → holdSeat, 완료 → confirmSeat 실제 호출
+   * - MAX_SEATS=1 강제 (백엔드는 세션당 hold 1좌석만 허용)
+   */
+  liveMode?:   LiveModeConfig;
 }
 
 export default function BookingFlow({
   venue, meta, mode, sessionId, startedAt, skipCaptcha = false, resultPath, onBack,
-  liveSeatLabels,
+  liveSeatLabels, liveMode,
 }: Props) {
+  const isLive = !!liveMode;
+  // 라이브: 세션당 hold 1좌석만 허용 (백엔드 정책). 나머지 모드는 4좌석까지.
+  const MAX_SEATS = isLive ? 1 : 4;
   const liveSeatSet = useMemo(
     () => (liveSeatLabels && liveSeatLabels.length > 0 ? new Set(liveSeatLabels) : null),
     [liveSeatLabels],
   );
   const router = useRouter();
-  const [step,         setStep]         = useState<Step>(skipCaptcha ? 'zone' : 'captcha');
+  // 라이브 모드는 CAPTCHA/랜덤 시뮬 스킵. 실전 티켓팅 UX 순수 재현.
+  const initialStep: Step = isLive ? 'zone' : (skipCaptcha ? 'zone' : 'captcha');
+  const [step,         setStep]         = useState<Step>(initialStep);
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null);
   const [selected,     setSelected]     = useState<SelectedSeat[]>([]);
   const { user, guestNickname } = useAuth();
@@ -81,6 +111,76 @@ export default function BookingFlow({
   const [ticket,         setTicket]         = useState<TicketData | null>(null);
   const [bookedSeats,    setBookedSeats]    = useState<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+
+  // ── 라이브 모드 상태 ─────────────────────────
+  const {
+    seatMap,
+    myHold,
+    error: seatsError,
+    refetch: refetchSeats,
+    onHoldSuccess,
+    onConfirmSuccess,
+  } = useLiveSeats(isLive ? liveMode!.sessionId : null);
+  const { nowServer } = useServerTime();
+  const [liveInlineError, setLiveInlineError] = useState<string | null>(null);
+  const [holdPending, setHoldPending] = useState(false);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmed, setConfirmed] = useState<LiveConfirmResult | null>(null);
+  // hold TTL 카운트다운 tick trigger
+  const [, setHoldTick] = useState(0);
+  useEffect(() => {
+    if (!isLive || !myHold) return;
+    const id = setInterval(() => setHoldTick((t) => t + 1), 250);
+    return () => clearInterval(id);
+  }, [isLive, myHold]);
+
+  const holdRemainingMs = useMemo(() => {
+    if (!isLive || !myHold) return null;
+    const exp = Date.parse(myHold.expiresAt);
+    if (!Number.isFinite(exp)) return null;
+    return Math.max(0, exp - nowServer());
+  }, [isLive, myHold, nowServer]);
+
+  // hold TTL 만료 → 로컬 선택 해제 + 안내
+  const holdExpiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isLive || !myHold) return;
+    if (holdRemainingMs === null || holdRemainingMs > 0) return;
+    if (holdExpiredRef.current === myHold.seatLabel) return;
+    holdExpiredRef.current = myHold.seatLabel;
+    setSelected([]);
+    setLiveInlineError('선점 시간이 만료됐어요. 좌석을 다시 선택해 주세요.');
+    refetchSeats();
+  }, [isLive, myHold, holdRemainingMs, refetchSeats]);
+
+  // myHold 변경 시 selected 를 동기화 (외부 서버 상태 → 로컬 UI 상태 반영).
+  // set-state-in-effect 룰 예외: myHold 는 순수한 서버 파생 값이지만
+  // selected 는 practice/mock 흐름에서 사용자 클릭으로도 수정되므로 useMemo 통합 불가.
+  useEffect(() => {
+    if (!isLive) return;
+    if (!myHold) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelected([]);
+      return;
+    }
+    holdExpiredRef.current = null;
+    const zone = venue.zones.find((z) => myHold.seatLabel.startsWith(`${z.id}-`));
+    if (!zone) return;
+    // seatLabel = `${zoneId}-${row}-${col}` → 라벨 파싱
+    const rest = myHold.seatLabel.slice(zone.id.length + 1);
+    const lastDash = rest.lastIndexOf('-');
+    if (lastDash < 0) return;
+    const rowLabel = rest.slice(0, lastDash);
+    const col = Number(rest.slice(lastDash + 1));
+    if (!Number.isFinite(col)) return;
+    setSelected([{
+      id: myHold.seatLabel,
+      zoneId: zone.id,
+      zoneName: zone.name,
+      tier: zone.tier,
+      label: `${rowLabel}열 ${col}번`,
+    }]);
+  }, [isLive, myHold, venue.zones]);
 
   /* 타이머
    * - startedAt(서버 발급 세션 시작 시각) 주어지면: 마운트~완료까지 그 시점 기준으로 실시간 계산.
@@ -137,10 +237,11 @@ export default function BookingFlow({
     }
 
     // 좌석 상태 계산.
+    //  - 실전 라이브(isLive=true): useLiveSeats.seatMap 이 SeatGrid 로 직접 주입. bookedSeats 미사용.
     //  - 라이브 미리보기(liveSeatSet 있음): live에 포함 안 된 좌석 = "미오픈" (선택 불가)
     //  - 연습 모드: 랜덤 ~35% 예매완료 시뮬레이션
     const taken = new Set<string>();
-    if (zone.type === 'seated' && zone.seatRows) {
+    if (!isLive && zone.type === 'seated' && zone.seatRows) {
       if (liveSeatSet) {
         zone.seatRows.forEach(row => {
           for (let col = 1; col <= row.seatCount; col++) {
@@ -159,23 +260,54 @@ export default function BookingFlow({
     setBookedSeats(taken);
     setActiveZoneId(zoneId);
     setStep('seats');
-  }, [venue.zones, liveSeatSet]);
+  }, [venue.zones, liveSeatSet, isLive, MAX_SEATS]);
 
   const handleViewAll = () => {
     setActiveZoneId(null);
     setStep('zone');
   };
 
-  const MAX_SEATS = 4;
-
   const handleToggleSeat = useCallback((seat: SelectedSeat) => {
+    if (isLive && liveMode) {
+      // 라이브: 같은 좌석 재클릭은 무시(백엔드에 unhold 스펙 없음).
+      if (myHold?.seatLabel === seat.id) return;
+      setLiveInlineError(null);
+      setHoldPending(true);
+      apiHoldSeat(liveMode.sessionId, seat.id)
+        .then((hold) => {
+          onHoldSuccess(hold);
+        })
+        .catch((err) => {
+          if (err instanceof ApiError) {
+            if (err.code === 'SEAT_UNAVAILABLE') {
+              setLiveInlineError('이미 다른 사람이 선점한 좌석이에요. 다른 좌석을 골라 주세요.');
+              refetchSeats();
+              return;
+            }
+            if (err.code === 'HOLD_EXPIRED') {
+              setLiveInlineError('선점 시간이 만료됐어요. 다시 선택해 주세요.');
+              refetchSeats();
+              return;
+            }
+            if (err.code === 'ROUND_NOT_OPEN' || err.code === 'ROUND_ALREADY_CLOSED') {
+              setLiveInlineError(err.message);
+              return;
+            }
+            setLiveInlineError(err.message);
+            return;
+          }
+          setLiveInlineError('좌석 선점 중 오류가 발생했습니다.');
+        })
+        .finally(() => setHoldPending(false));
+      return;
+    }
     setSelected(prev => {
       const idx = prev.findIndex(s => s.id === seat.id);
       if (idx >= 0) return prev.filter((_, i) => i !== idx);
       if (prev.length >= MAX_SEATS) return prev;
       return [...prev, seat];
     });
-  }, []);
+  }, [isLive, liveMode, myHold, onHoldSuccess, refetchSeats, MAX_SEATS]);
 
   const handleRemoveSeat = (id: string) =>
     setSelected(prev => prev.filter(s => s.id !== id));
@@ -185,6 +317,40 @@ export default function BookingFlow({
   const handleComplete = async () => {
     if (selected.length === 0) return;
     clearInterval(timerRef.current);
+
+    // ── 라이브 모드: confirmSeat 호출 → 결과 상위 전달 ──
+    if (isLive && liveMode) {
+      const target = myHold?.seatLabel ?? selected[0]?.id;
+      if (!target) return;
+      setLiveInlineError(null);
+      setConfirmPending(true);
+      try {
+        const res = await apiConfirmSeat(liveMode.sessionId, target);
+        onConfirmSuccess(target);
+        setConfirmed(res);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[live] confirm', res);
+        }
+        liveMode.onConfirmed?.(res, target);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.code === 'HOLD_EXPIRED') {
+            setLiveInlineError('선점이 만료됐어요. 다시 선택해 주세요.');
+            refetchSeats();
+          } else if (err.code === 'SEAT_UNAVAILABLE') {
+            setLiveInlineError('이미 다른 사람이 예매한 좌석이에요.');
+            refetchSeats();
+          } else {
+            setLiveInlineError(err.message);
+          }
+        } else {
+          setLiveInlineError('좌석 확정 중 오류가 발생했습니다.');
+        }
+      } finally {
+        setConfirmPending(false);
+      }
+      return;
+    }
 
     let result: SessionResult | null = null;
     if (sessionId) {
@@ -213,7 +379,6 @@ export default function BookingFlow({
       eventTitle:     meta.eventTitle,
       seat:           selected.map(s => s.label).join(', '),
       nickname,
-      isGuest:        !user,
       elapsedMs:      result?.elapsedMs ?? elapsedMs,
       // ranked === false면 rank 필드는 모두 null이므로 그대로 전달 (TicketModal에서 방어)
       // API 실패로 result === null인 경우도 ranked=false로 취급해 UI 방어
@@ -276,7 +441,7 @@ export default function BookingFlow({
 
         {/* 좌석 영역 */}
         <div className="flex-1 min-w-0">
-          {(step === 'zone' || step === 'done') && !activeZoneId && (
+          {(step === 'zone' || step === 'done') && !activeZoneId && !(isLive && confirmed) && (
             venue.layout === 'auditorium'    ? <StadiumMap         venue={venue} onSelectZone={handleSelectZone} />
             : venue.layout === 'arena-ring'  ? <ArenaRingMap       venue={venue} onSelectZone={handleSelectZone} />
             : venue.layout === 'baseball'    ? <BaseballDiamondMap venue={venue} onSelectZone={handleSelectZone} />
@@ -285,16 +450,31 @@ export default function BookingFlow({
             : venue.layout === 'festival'    ? <FestivalMap        venue={venue} onSelectZone={handleSelectZone} />
             :                                   <ZoneMap           venue={venue} onSelectZone={handleSelectZone} />
           )}
-          {step === 'seats' && activeZone && (
-            <SeatGrid
-              zone={activeZone}
-              tier={venue.tiers[activeZone.tier]}
-              selected={new Set(selected.map(s => s.id))}
-              bookedSeats={bookedSeats}
-              onToggle={handleToggleSeat}
-              layout={venue.layout}
-              unavailableLabel={liveSeatSet ? '미오픈' : undefined}
-            />
+
+          {step === 'seats' && activeZone && !confirmed && (
+            <div className="space-y-3">
+              {isLive && (
+                <LiveHoldBar
+                  myHold={myHold}
+                  remainingMs={holdRemainingMs}
+                  seatsError={seatsError}
+                  inlineError={liveInlineError}
+                  holdPending={holdPending}
+                  confirmPending={confirmPending}
+                />
+              )}
+              <SeatGrid
+                zone={activeZone}
+                tier={venue.tiers[activeZone.tier]}
+                selected={new Set(selected.map(s => s.id))}
+                bookedSeats={bookedSeats}
+                onToggle={handleToggleSeat}
+                layout={venue.layout}
+                unavailableLabel={liveSeatSet ? '미오픈' : undefined}
+                seatStatusMap={isLive ? seatMap : undefined}
+                myHoldSeatLabel={isLive ? myHold?.seatLabel ?? null : undefined}
+              />
+            </div>
           )}
           {step === 'done' && mode === 'practice' && (
             <div className="card p-8 text-center space-y-4">
@@ -383,6 +563,84 @@ export default function BookingFlow({
           onClose={() => setTicket(null)}
           onRetry={() => { setTicket(null); onBack?.(); }}
         />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   LiveHoldBar — 라이브 좌석 선택 화면 상단 알림 바
+   ─ 좌석 선점 카운트다운(30초 TTL) + hold/confirm 진행 배지 + 인라인 오류
+   ───────────────────────────────────────────────────────── */
+
+function LiveHoldBar({
+  myHold,
+  remainingMs,
+  seatsError,
+  inlineError,
+  holdPending,
+  confirmPending,
+}: {
+  myHold: { seatLabel: string; expiresAt: string } | null;
+  remainingMs: number | null;
+  seatsError: ApiError | null;
+  inlineError: string | null;
+  holdPending: boolean;
+  confirmPending: boolean;
+}) {
+  const secLeft = remainingMs === null ? null : Math.ceil(remainingMs / 1000);
+  const urgent = secLeft !== null && secLeft <= 5 && secLeft > 0;
+
+  if (seatsError) {
+    return (
+      <div
+        role="alert"
+        className="rounded-lg border border-danger-border bg-danger-bg px-4 py-3 text-sm text-danger-text"
+      >
+        좌석 정보를 불러올 수 없습니다: {seatsError.message}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-bg-subtle px-4 py-2.5 text-sm">
+      {myHold ? (
+        <div className="flex items-center gap-2">
+          <span className="badge badge-primary">선점 중</span>
+          <span className="text-text-secondary">
+            좌석{' '}
+            <span className="font-mono-tabular font-semibold text-text">
+              {myHold.seatLabel}
+            </span>
+          </span>
+          {secLeft !== null && (
+            <span
+              className={[
+                'font-mono-tabular font-bold',
+                urgent ? 'text-danger-text' : 'text-primary',
+              ].join(' ')}
+            >
+              {secLeft}s
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-text-secondary">
+          <span className="badge badge-neutral">대기</span>
+          <span>좌석을 클릭하면 30초 동안 자리가 임시 예약됩니다.</span>
+        </div>
+      )}
+
+      {holdPending && (
+        <span className="text-xs text-text-tertiary">선점 요청 중…</span>
+      )}
+      {confirmPending && (
+        <span className="text-xs text-text-tertiary">확정 요청 중…</span>
+      )}
+      {inlineError && !confirmPending && !holdPending && (
+        <span className="ml-auto text-xs text-danger-text" role="alert">
+          {inlineError}
+        </span>
       )}
     </div>
   );

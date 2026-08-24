@@ -1,10 +1,12 @@
 'use client';
 
 import type { Zone, TierInfo, SelectedSeat } from '@/types/ticketing';
+import type { LiveSeatStatus } from '@/lib/live';
 
 /* ─────────────────────────────────────────────────────────
    SeatGrid — 구역 클릭 후 보여주는 상세 좌석 배치도
-   결정적 패턴으로 "이미 예매됨" 좌석 생성 (실제 구현 시 API 대체)
+   연습/모의: bookedSeats(랜덤·미오픈) 사용.
+   라이브   : seatStatusMap(available/held/sold) + myHoldSeatLabel 사용.
    ───────────────────────────────────────────────────────── */
 
 const SEAT_PX = 15;
@@ -24,12 +26,22 @@ interface Props {
   layout?: 'grid' | 'auditorium' | 'proscenium' | 'arena-ring' | 'baseball' | 'stadium-oval' | 'festival';
   /** bookedSeats의 표시 라벨. 기본 "예매 완료" / 라이브 미리보기에서는 "미오픈" 등으로 교체 */
   unavailableLabel?: string;
+  /**
+   * 라이브 모드 좌석 상태맵.
+   * key = seatLabel(`${zoneId}-${rowLabel}-${col}`), value = 'available' | 'held' | 'sold'.
+   * 지정된 좌석만 렌더 대상 (맵에 없는 좌석은 "미오픈"으로 취급).
+   */
+  seatStatusMap?: Map<string, LiveSeatStatus>;
+  /** 라이브 모드에서 본인이 hold 한 좌석 라벨 (있으면 primary 강조). */
+  myHoldSeatLabel?: string | null;
 }
 
 export default function SeatGrid({
   zone, tier, selected, bookedSeats, onToggle, maxSelect = MAX_SELECT, layout,
   unavailableLabel = '예매 완료',
+  seatStatusMap, myHoldSeatLabel,
 }: Props) {
+  const isLive = !!seatStatusMap;
   const isAuditorium = layout === 'auditorium';
 
   /* ── 지정석 구역 ── */
@@ -127,23 +139,61 @@ export default function SeatGrid({
                   {Array.from({ length: seatCount }, (_, i) => {
                     const col  = i + 1;
                     const id   = `${zone.id}-${label}-${col}`;
-                    const taken = bookedSeats.has(id);
                     const sel  = selected.has(id);
                     const canAdd = selected.size < maxSelect;
 
-                    let bg, border, cursor: string;
-                    if (sel)   { bg = '#E85D00'; border = '#C24E00'; cursor = 'pointer'; }
-                    else if (taken) { bg = '#E2E8F0'; border = '#CBD5E1'; cursor = 'not-allowed'; }
-                    else       { bg = tier.bg;    border = tier.color; cursor = canAdd ? 'pointer' : 'not-allowed'; }
+                    // 라이브 모드: 서버 status 로 상태 결정. myHold 좌석은 primary 강조.
+                    // 연습/모의: 기존 bookedSeats 흐름 유지.
+                    const liveStatus: LiveSeatStatus | 'unopened' | null = isLive
+                      ? (seatStatusMap!.get(id) ?? 'unopened')
+                      : null;
+                    const isMyHold = isLive && myHoldSeatLabel === id;
+                    const takenLegacy = !isLive && bookedSeats.has(id);
+                    const disabled = isLive
+                      ? (liveStatus === 'sold' || liveStatus === 'unopened' || (liveStatus === 'held' && !isMyHold))
+                      : takenLegacy;
+
+                    let bg: string, border: string, cursor: string, opacity = 1;
+                    if (isLive) {
+                      if (isMyHold) {
+                        bg = '#E85D00'; border = '#C24E00'; cursor = 'pointer';
+                      } else if (liveStatus === 'sold') {
+                        bg = '#1E293B'; border = '#0F172A'; cursor = 'not-allowed'; opacity = 0.55;
+                      } else if (liveStatus === 'held') {
+                        bg = '#CBD5E1'; border = '#94A3B8'; cursor = 'not-allowed'; opacity = 0.55;
+                      } else if (liveStatus === 'unopened') {
+                        bg = '#F1F5F9'; border = '#E2E8F0'; cursor = 'not-allowed'; opacity = 0.35;
+                      } else {
+                        // available
+                        bg = tier.bg; border = tier.color; cursor = 'pointer';
+                      }
+                      // 라이브에서는 selected 배열도 반영 (SelectionPanel 총액 등)
+                      if (sel && !isMyHold) {
+                        bg = '#E85D00'; border = '#C24E00';
+                      }
+                    } else {
+                      if (sel)   { bg = '#E85D00'; border = '#C24E00'; cursor = 'pointer'; }
+                      else if (takenLegacy) { bg = '#E2E8F0'; border = '#CBD5E1'; cursor = 'not-allowed'; }
+                      else       { bg = tier.bg;    border = tier.color; cursor = canAdd ? 'pointer' : 'not-allowed'; }
+                    }
+
+                    const title = isLive
+                      ? (liveStatus === 'sold' ? '예매 완료된 좌석'
+                        : liveStatus === 'held' ? (isMyHold ? '내가 선점한 좌석' : '다른 사용자가 선점 중')
+                        : liveStatus === 'unopened' ? '미오픈'
+                        : `${label}열 ${col}번 — ${tier.label} ${fmtPrice(tier.price)}`)
+                      : (takenLegacy ? unavailableLabel : `${label}열 ${col}번 — ${tier.label} ${fmtPrice(tier.price)}`);
+
+                    const highlight = isMyHold || sel;
 
                     return (
                       <button
                         key={id}
-                        title={taken ? unavailableLabel : `${label}열 ${col}번 — ${tier.label} ${fmtPrice(tier.price)}`}
-                        disabled={taken}
+                        title={title}
+                        disabled={disabled}
                         onClick={() => {
-                          if (taken) return;
-                          if (!sel && !canAdd) return;
+                          if (disabled) return;
+                          if (!isLive && !sel && !canAdd) return;
                           onToggle({
                             id, zoneId: zone.id, zoneName: zone.name,
                             tier: zone.tier,
@@ -156,9 +206,12 @@ export default function SeatGrid({
                           border: `1px solid ${border}`,
                           background: bg,
                           cursor,
+                          opacity,
                           flexShrink: 0,
-                          transform: sel ? 'scale(1.15)' : 'scale(1)',
+                          transform: highlight ? 'scale(1.15)' : 'scale(1)',
                           transition: 'transform 80ms',
+                          outline: isMyHold ? '2px solid #E85D00' : 'none',
+                          outlineOffset: isMyHold ? 1 : 0,
                         }}
                       />
                     );
@@ -187,13 +240,33 @@ export default function SeatGrid({
           <div className="flex items-center gap-1.5">
             <span className="inline-block"
                   style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#E85D00', border: '1px solid #C24E00' }} />
-            선택됨
+            {isLive ? '내 선점' : '선택됨'}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="inline-block"
-                  style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#E2E8F0', border: '1px solid #CBD5E1' }} />
-            {unavailableLabel}
-          </div>
+          {isLive ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block"
+                      style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#CBD5E1', border: '1px solid #94A3B8', opacity: 0.7 }} />
+                타 사용자 선점
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block"
+                      style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#1E293B', border: '1px solid #0F172A', opacity: 0.7 }} />
+                예매 완료
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-block"
+                      style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#F1F5F9', border: '1px solid #E2E8F0', opacity: 0.5 }} />
+                미오픈
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block"
+                    style={{ width: 11, height: 11, borderRadius: isAuditorium ? '50%' : 2, background: '#E2E8F0', border: '1px solid #CBD5E1' }} />
+              {unavailableLabel}
+            </div>
+          )}
         </div>
       </div>
     );

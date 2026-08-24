@@ -23,10 +23,14 @@ export const ROUTES = {
     me: `${BASE_URL}/users/me`,
   },
   guests: {
+    root: `${BASE_URL}/guests`,
     me: `${BASE_URL}/guests/me`,
   },
   events: `${BASE_URL}/events`,
-  tickets: `${BASE_URL}/tickets`,
+  tickets: {
+    me: `${BASE_URL}/tickets/me`,
+    detail: (ticketId: number | string) => `${BASE_URL}/tickets/${ticketId}`,
+  },
   orders: `${BASE_URL}/orders`,
   practice: {
     sessions: `${BASE_URL}/practice/sessions`,
@@ -38,8 +42,16 @@ export const ROUTES = {
   live: {
     current: `${BASE_URL}/live/current`,
     next: `${BASE_URL}/live/next`,
-    recentResults: (limit = 3) =>
-      `${BASE_URL}/live/recent-results?limit=${limit}`,
+    lastRound: (limit = 10) => `${BASE_URL}/live/last-round?limit=${limit}`,
+    round: (roundId: number | string) => `${BASE_URL}/live/rounds/${roundId}`,
+    roundSessions: (roundId: number | string) =>
+      `${BASE_URL}/live/rounds/${roundId}/sessions`,
+    session: (sessionId: string) => ({
+      queue: `${BASE_URL}/live/sessions/${sessionId}/queue`,
+      seats: `${BASE_URL}/live/sessions/${sessionId}/seats`,
+      hold: `${BASE_URL}/live/sessions/${sessionId}/hold`,
+      confirm: `${BASE_URL}/live/sessions/${sessionId}/confirm`,
+    }),
   },
   admin: {
     liveConfig: `${BASE_URL}/admin/live/config`,
@@ -71,13 +83,13 @@ function forceLogout() {
 
 /**
  * 백엔드 공통 응답 스키마
- *   성공: { success: true,  data:  T }
+ *   성공: { success: true,  data:  T, meta?: M }
  *   실패: { success: false, error: { code, message } }
  *
- * apiFetch<T>는 성공 시 `data`(T)만 반환하고, 실패 시 ApiError를 throw한다.
- * 데이터 없는 성공은 T = null로 선언.
+ * apiFetch<T>는 성공 시 `data`(T)만 반환. 페이지네이션 등 meta 가 필요하면 apiFetchWithMeta 사용.
+ * 실패 시 항상 ApiError throw. 데이터 없는 성공은 T = null.
  */
-type SuccessEnvelope<T> = { success: true; data: T };
+type SuccessEnvelope<T, M = unknown> = { success: true; data: T; meta?: M };
 type ErrorEnvelope = {
   success?: false;
   error?: { code?: string; message?: string };
@@ -91,11 +103,11 @@ async function readErrorEnvelope(res: Response): Promise<ErrorEnvelope> {
   }
 }
 
-export async function apiFetch<T>(
+async function fetchEnvelope<T, M = unknown>(
   url: string,
   { method = "GET", body, headers: extraHeaders, ...rest }: FetchOptions = {},
   _retry = false,
-): Promise<T> {
+): Promise<SuccessEnvelope<T, M>> {
   const hasBody = body !== undefined;
   const isMutating = method !== "GET";
   // CSRF 심층 방어:
@@ -132,7 +144,7 @@ export async function apiFetch<T>(
   }
 
   if (res.ok) {
-    const json = (await res.json()) as SuccessEnvelope<T> | { success?: unknown };
+    const json = (await res.json()) as SuccessEnvelope<T, M> | { success?: unknown };
     if (!json || (json as { success?: unknown }).success !== true) {
       throw new ApiError(
         getErrorMessage('INTERNAL_ERROR'),
@@ -140,7 +152,7 @@ export async function apiFetch<T>(
         res.status,
       );
     }
-    return (json as SuccessEnvelope<T>).data;
+    return json as SuccessEnvelope<T, M>;
   }
 
   const envelope = await readErrorEnvelope(res);
@@ -161,7 +173,7 @@ export async function apiFetch<T>(
           headers: { "X-Requested-With": "XMLHttpRequest" },
         });
         if (refreshRes.ok) {
-          return apiFetch<T>(url, { method, body, headers: extraHeaders, ...rest }, true);
+          return fetchEnvelope<T, M>(url, { method, body, headers: extraHeaders, ...rest }, true);
         }
       } catch {}
     }
@@ -190,6 +202,22 @@ export async function apiFetch<T>(
       : `요청을 처리할 수 없습니다 (${res.status})`;
   }
   throw new ApiError(getErrorMessage(code, fallback), code ?? 'UNKNOWN', res.status);
+}
+
+export async function apiFetch<T>(
+  url: string,
+  options: FetchOptions = {},
+): Promise<T> {
+  const json = await fetchEnvelope<T>(url, options);
+  return json.data;
+}
+
+export async function apiFetchWithMeta<T, M = Record<string, unknown>>(
+  url: string,
+  options: FetchOptions = {},
+): Promise<{ data: T; meta: M | undefined }> {
+  const json = await fetchEnvelope<T, M>(url, options);
+  return { data: json.data, meta: json.meta };
 }
 
 // getErrorMessage와 동일한 내부 맵을 공유할 수 없어(export 안 됨) 별도 검사 함수.
