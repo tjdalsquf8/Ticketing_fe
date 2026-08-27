@@ -18,9 +18,6 @@ const NAV = [
   { href: '/ranking',  label: '랭킹'     },
 ];
 
-// 뼈대: 실제 잔액은 AuthContext / 별도 훅으로 대체 예정
-const MOCK_POINTS = 3_000;
-
 export default function Header() {
   const pathname = usePathname();
   const router = useRouter();
@@ -144,7 +141,9 @@ export default function Header() {
                 className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary-subtle border border-primary-border text-xs font-semibold text-primary hover:bg-primary-subtle/70 transition-colors"
                 title="포인트 충전"
               >
-                <span className="font-mono-tabular">{MOCK_POINTS.toLocaleString()}</span>
+                <span className="font-mono-tabular">
+                  {user.points !== undefined ? user.points.toLocaleString() : '-'}
+                </span>
                 <span>P</span>
               </Link>
               <Link

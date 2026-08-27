@@ -48,6 +48,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   GUEST_NOT_FOUND: "게스트 정보를 찾을 수 없습니다.",
   GUEST_NOT_AUTHENTICATED: "게스트 세션을 먼저 시작해 주세요.",
   NICKNAME_REQUIRED: "닉네임을 입력해 주세요.",
+  NICKNAME_CHANGE_TOO_SOON: "닉네임은 1시간에 한 번만 변경할 수 있습니다. 잠시 후 다시 시도해 주세요.",
   SESSION_NOT_FOUND: "세션을 찾을 수 없습니다.",
   SESSION_ALREADY_COMPLETED: "이미 완료된 세션입니다.",
   SESSION_FORBIDDEN: "본인의 세션이 아닙니다.",
@@ -79,7 +80,43 @@ const ERROR_MESSAGES: Record<string, string> = {
   TOO_MANY_LIVE_REQUESTS: "요청이 너무 빠릅니다. 잠시 후 다시 시도해 주세요.",
   TOO_MANY_ADMIN_REQUESTS: "관리자 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
   INTERNAL_ERROR: "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  // 이벤트 도메인
+  EVENT_NOT_FOUND: "해당 이벤트를 찾을 수 없습니다.",
+  EVENT_NOT_OPEN: "지금은 이 이벤트가 열리지 않았습니다.",
+  EVENT_ALREADY_STARTED: "이미 오픈된 이벤트는 이 항목을 변경할 수 없습니다.",
+  EVENT_ALREADY_CLOSED: "이미 종료된 이벤트입니다.",
+  EVENT_CANCEL_FORBIDDEN: "취소된 이벤트는 다시 변경할 수 없습니다.",
+  EVENT_TIME_CONFLICT: "같은 공연장에 시간이 겹치는 이벤트가 이미 있습니다.",
+  NOT_REGISTERED: "이벤트 신청자만 참여할 수 있습니다.",
+  ALREADY_REGISTERED: "이미 신청한 이벤트입니다.",
+  REGISTRATION_CLOSED: "신청이 마감되었습니다.",
+  REGISTRATION_NOT_FOUND: "신청 내역을 찾을 수 없습니다.",
+  CANCEL_NOT_ALLOWED: "오픈 이후에는 신청을 취소할 수 없습니다.",
+  INSUFFICIENT_POINTS: "포인트가 부족합니다.",
+  RECURRENCE_INVALID: "반복 설정이 올바르지 않습니다.",
+  VENUE_NOT_FOUND: "해당 공연장을 찾을 수 없습니다.",
+  INVALID_SEAT_LABEL: "좌석 라벨 형식이 올바르지 않습니다.",
+  SEAT_ALREADY_HELD: "다른 사용자가 이미 선점 중인 좌석입니다.",
+  SEAT_ALREADY_CONFIRMED: "이미 확정된 좌석입니다.",
+  // 이벤트 rate limit — BE 스펙:
+  //   TOO_MANY_EVENT_REQUESTS (공개 조회, IP 1분 60)
+  //   TOO_MANY_EVENT_ACTIONS (신청/취소/세션시작, 유저 1분 10)
+  //   TOO_MANY_EVENT_SESSION_REQUESTS (큐/좌석/hold/confirm, 유저 1분 60)
+  TOO_MANY_EVENT_REQUESTS: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+  TOO_MANY_EVENT_ACTIONS:
+    "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
+  TOO_MANY_EVENT_SESSION_REQUESTS:
+    "요청이 너무 빠릅니다. 잠시 기다린 뒤 다시 시도해 주세요.",
 };
+
+/** 이벤트 rate-limit 계열 코드인지. 폴링 훅이 중단·유도 판정에 사용. */
+export function isEventRateLimitCode(code: string | undefined): boolean {
+  return (
+    code === "TOO_MANY_EVENT_REQUESTS" ||
+    code === "TOO_MANY_EVENT_ACTIONS" ||
+    code === "TOO_MANY_EVENT_SESSION_REQUESTS"
+  );
+}
 
 const DEFAULT_MESSAGE = "요청 처리 중 오류가 발생했습니다.";
 

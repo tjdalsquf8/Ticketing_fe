@@ -27,6 +27,8 @@ export const ROUTES = {
     me: `${BASE_URL}/guests/me`,
   },
   events: `${BASE_URL}/events`,
+  eventsRankingsLatest: (limit = 100) =>
+    `${BASE_URL}/events/rankings/latest?limit=${limit}`,
   tickets: {
     me: `${BASE_URL}/tickets/me`,
     detail: (ticketId: number | string) => `${BASE_URL}/tickets/${ticketId}`,
@@ -62,6 +64,11 @@ export const ROUTES = {
       `${BASE_URL}/admin/live/rounds/${roundId}/detail`,
     liveRoundCancel: (roundId: number | string) =>
       `${BASE_URL}/admin/live/rounds/${roundId}/cancel`,
+    liveRoundStats: (roundId: number | string) =>
+      `${BASE_URL}/admin/live/rounds/${roundId}/stats`,
+    liveCronRun: `${BASE_URL}/admin/live/cron/run`,
+    eventStats: (eventId: number | string) =>
+      `${BASE_URL}/admin/events/${eventId}/stats`,
   },
 };
 

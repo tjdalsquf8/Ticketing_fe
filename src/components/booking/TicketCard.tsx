@@ -21,7 +21,7 @@ export interface TicketData {
 
 interface Props extends TicketData {
   /** 좌측 상단 캡션. 기본 'PRACTICE MODE'. */
-  mode?: 'practice' | 'live';
+  mode?: 'practice' | 'live' | 'event';
   /**
    * 오버레이(모달) 사용 시 노치를 배경 컬러(rgba(0,0,0,0.85))로 파낸다.
    * 인라인 사용 시 배경이 white 이므로 페이지 배경색으로 지정 (기본).
@@ -86,7 +86,12 @@ export default function TicketCard(props: Props) {
           mode = 'practice',
           notchColor = '#FFFFFF' } = props;
   const hasRank = ranked && rankNumber !== null && totalCount !== null && rankPercentile !== null;
-  const isLive = mode === 'live';
+  const caption =
+    mode === 'event'
+      ? 'EVENT MODE'
+      : mode === 'live'
+        ? 'LIVE MODE'
+        : 'PRACTICE MODE';
   const stub = (serial.split('-')[2] ?? '00000').padStart(7, '0');
   const timeStr = (elapsedMs / 1000).toFixed(3) + 's';
 
@@ -120,7 +125,7 @@ export default function TicketCard(props: Props) {
           <div>
             <p style={{ color: '#E85D00', fontSize: 9, fontWeight: 700, letterSpacing: '0.3em' }}>TICKET  RUSH</p>
             <p style={{ color: '#555', fontSize: 8, marginTop: 2, letterSpacing: '0.15em' }}>
-              {isLive ? 'LIVE MODE' : 'PRACTICE MODE'}
+              {caption}
             </p>
           </div>
           <div>
