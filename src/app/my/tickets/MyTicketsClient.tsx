@@ -5,6 +5,9 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { getMyTickets, type TicketListItem, type TicketListMeta } from '@/lib/tickets';
 import { getLiveEventByEventId } from '@/data/live';
+import { getEvent, type EventDetail } from '@/lib/events';
+import { getAdminVenueOption } from '@/data/live';
+import { safeImageUrl } from '@/lib/safe';
 
 const PAGE_SIZE = 20;
 
@@ -14,11 +17,14 @@ function formatDate(iso: string): string {
   return `${d.getFullYear()}.${z(d.getMonth() + 1)}.${z(d.getDate())}`;
 }
 
-function TicketRow({ ticket }: { ticket: TicketListItem }) {
-  const event = getLiveEventByEventId(ticket.eventId);
-  const eventTitle = event?.title ?? '실시간 회차';
-  const venueName = event?.venueName ?? '—';
-  const poster = event?.posterImage;
+interface RowMeta {
+  title: string;
+  venueName: string;
+  poster?: string;
+  badgeLabel: string;
+}
+
+function TicketRow({ ticket, meta }: { ticket: TicketListItem; meta: RowMeta }) {
   const timeStr = (ticket.elapsedMs / 1000).toFixed(3);
 
   return (
@@ -28,10 +34,10 @@ function TicketRow({ ticket }: { ticket: TicketListItem }) {
     >
       {/* 좌측 포스터 */}
       <div className="relative w-20 h-28 sm:w-24 sm:h-32 shrink-0 rounded-md overflow-hidden bg-bg-muted">
-        {poster ? (
+        {meta.poster ? (
           <Image
-            src={poster}
-            alt={eventTitle}
+            src={meta.poster}
+            alt={meta.title}
             fill
             sizes="96px"
             className="object-cover"
@@ -46,10 +52,15 @@ function TicketRow({ ticket }: { ticket: TicketListItem }) {
       {/* 중앙 정보 */}
       <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
         <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded bg-bg-subtle text-text-tertiary">
+              {meta.badgeLabel}
+            </span>
+          </div>
           <p className="text-sm sm:text-base font-semibold text-text truncate">
-            {eventTitle}
+            {meta.title}
           </p>
-          <p className="text-xs text-text-secondary truncate">{venueName}</p>
+          <p className="text-xs text-text-secondary truncate">{meta.venueName}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap mt-2">
           <span className="badge badge-neutral font-mono-tabular">
@@ -99,6 +110,9 @@ export default function MyTicketsClient() {
   const [page, setPage] = useState(1);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventMap, setEventMap] = useState<Map<number, EventDetail>>(
+    () => new Map(),
+  );
 
   const load = useCallback(async (nextPage: number) => {
     setLoading(true);
@@ -118,6 +132,62 @@ export default function MyTicketsClient() {
     load(page);
   }, [load, page]);
 
+  // 이벤트 티켓(roundId=null)에 필요한 이벤트 메타를 병렬 조회.
+  // getEvent 실패는 조용히 무시 — 폴백 라벨로 렌더.
+  useEffect(() => {
+    const eventIds = Array.from(
+      new Set(
+        tickets
+          .filter((t) => t.roundId == null && typeof t.eventId === 'number')
+          .map((t) => t.eventId as number)
+          .filter((id) => !eventMap.has(id)),
+      ),
+    );
+    if (eventIds.length === 0) return;
+    let alive = true;
+    Promise.all(
+      eventIds.map((id) =>
+        getEvent(id)
+          .then((ev) => [id, ev] as const)
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (!alive) return;
+      setEventMap((prev) => {
+        const next = new Map(prev);
+        for (const r of results) {
+          if (r) next.set(r[0], r[1]);
+        }
+        return next;
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tickets, eventMap]);
+
+  const rowMetaOf = (ticket: TicketListItem): RowMeta => {
+    // 이벤트 티켓
+    if (ticket.roundId == null && ticket.eventId != null) {
+      const ev = eventMap.get(ticket.eventId);
+      const venue = ev ? getAdminVenueOption(ev.venueId) : undefined;
+      return {
+        title: ev?.title ?? '유료 이벤트',
+        venueName: venue?.name ?? ev?.venueId ?? '—',
+        poster: safeImageUrl(venue?.posterImage),
+        badgeLabel: '유료 이벤트',
+      };
+    }
+    // 라이브 티켓 — 기존 카탈로그 조회 유지
+    const live = ticket.eventId != null ? getLiveEventByEventId(ticket.eventId) : null;
+    return {
+      title: live?.title ?? '실시간 회차',
+      venueName: live?.venueName ?? '—',
+      poster: safeImageUrl(live?.posterImage),
+      badgeLabel: '실시간',
+    };
+  };
+
   const totalPages = meta ? Math.max(1, Math.ceil(meta.totalCount / (meta.size || PAGE_SIZE))) : 1;
   const canPrev = page > 1;
   const canNext = page < totalPages;
@@ -127,7 +197,7 @@ export default function MyTicketsClient() {
       <header className="space-y-2">
         <h1 className="text-2xl font-bold text-text">내 티켓</h1>
         <p className="text-sm text-text-secondary">
-          실시간 티켓팅에서 TOP 10 안에 들어 발급받은 티켓입니다.
+          실시간 티켓팅 · 유료 이벤트에서 순위권 진입 시 발급받은 티켓입니다.
         </p>
       </header>
 
@@ -175,7 +245,7 @@ export default function MyTicketsClient() {
       {!isLoading && !error && tickets.length > 0 && (
         <div className="space-y-3">
           {tickets.map((t) => (
-            <TicketRow key={t.ticketId} ticket={t} />
+            <TicketRow key={t.ticketId} ticket={t} meta={rowMetaOf(t)} />
           ))}
         </div>
       )}
