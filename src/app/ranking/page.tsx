@@ -4,10 +4,11 @@ import { ROUTES } from '@/lib/api';
 import { PRACTICE_EVENTS } from '@/data/practice';
 import RankingRows from '@/components/ranking/RankingRows';
 import TicketRankingRows from '@/components/ranking/TicketRankingRows';
+import LatestEventBoard from '@/components/ranking/LatestEventBoard';
 
 export const metadata: Metadata = { title: '랭킹' };
 
-type Board = 'time' | 'tickets';
+type Board = 'time' | 'tickets' | 'latest-event';
 type Mode = 'practice' | 'live';
 type Period = 'daily' | 'weekly' | 'monthly';
 type TicketPeriod = 'weekly' | 'monthly' | 'all';
@@ -39,6 +40,7 @@ function parsePositiveInt(
 const BOARD_LABELS: Record<Board, string> = {
   time: '소요 시간',
   tickets: '티켓 누적',
+  'latest-event': '최근 이벤트',
 };
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -61,6 +63,7 @@ const TICKET_PERIOD_LABELS: Record<TicketPeriod, string> = {
 const BOARD_DESCRIPTION: Record<Board, string> = {
   time: '소요 시간이 빠른 순으로 정렬됩니다.',
   tickets: '누적 티켓 수 기준 회원 순위입니다 (게스트 제외).',
+  'latest-event': '가장 최근에 종료된 이벤트의 참여자 순위입니다.',
 };
 
 // 뼈대 mock — 백엔드 board=tickets 엔드포인트 구현 시 대체
@@ -145,7 +148,12 @@ export default async function RankingPage({
   }>;
 }) {
   const params = await searchParams;
-  const board: Board = params.board === 'tickets' ? 'tickets' : 'time';
+  const board: Board =
+    params.board === 'tickets'
+      ? 'tickets'
+      : params.board === 'latest-event'
+        ? 'latest-event'
+        : 'time';
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-8">
@@ -178,8 +186,10 @@ export default async function RankingPage({
 
       {board === 'time' ? (
         <TimeBoard params={params} />
-      ) : (
+      ) : board === 'tickets' ? (
         <TicketBoard params={params} />
+      ) : (
+        <LatestEventBoard />
       )}
 
     </div>

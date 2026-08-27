@@ -1,42 +1,52 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useCallback, useEffect, useMemo, useState, use } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
+  BE_CATEGORY_MAP,
+  KR_CATEGORY_MAP,
   EVENT_CATEGORIES,
   LIMITS,
-  isHexColor,
-  normalizePosterInitial,
+  snapOpensAtToHour,
   validateEventForm,
   hasErrors,
   type EventCategory,
-  type EventType,
   type EventFormErrors,
 } from '@/lib/adminEventValidation';
+import { AVAILABLE_VENUES, getAdminVenueOption } from '@/data/live';
+import {
+  adminCancelEvent,
+  adminUpdateEvent,
+  getAdminEventStats,
+  getEvent,
+  type EventDetail,
+  type EventStatus,
+} from '@/lib/events';
+import { ApiError } from '@/lib/errors';
+import EventCancelModal from '@/components/admin/EventCancelModal';
+import StatsSummaryCard from '@/components/admin/StatsSummaryCard';
 
 /* ──────────────────────────────────────────
-   /admin/events/[id]/edit — 이벤트 수정
-   ─ 뼈대: 초기값은 mock. 실제로는 GET /admin/events/:id 로 로드
-   ─ PUT /admin/events/:id 로 저장 (미연결)
+   /admin/events/[id]/edit — 이벤트 수정 (실 API)
+   ─ GET /api/events/:id 로 로드 (관리자용 GET /api/admin/events/:id 는 명세 미제공 → public 조회 재사용)
+   ─ PATCH /api/admin/events/:id 로 저장
+   ─ 취소: POST /api/admin/events/:id/cancel
    ────────────────────────────────────────── */
 
-const IS_DEV = process.env.NODE_ENV !== 'production';
-
-// 뼈대 초기값
-const INITIAL = {
-  type: 'paid' as EventType,
-  title: '아이유 The Golden Hour 앙코르',
-  category: '콘서트' as EventCategory,
-  venue: '고척스카이돔',
-  posterColor: '#DB2777',
-  posterInitial: 'IU',
-  opensAt: '2026-08-15T20:00',
-  totalSeats: '8000',
-  entryFeePoints: '500',
-  entryFeeTickets: '5',
-  prize: '스타벅스 30,000원 상품권 × TOP 3',
-  status: 'scheduled' as 'scheduled' | 'open' | 'closed',
+const STATUS_LABEL: Record<EventStatus, string> = {
+  scheduled: '오픈 예정',
+  open: '진행 중',
+  closed: '종료',
+  cancelled: '취소',
 };
+
+function toDatetimeLocal(iso: string): string {
+  // 브라우저 로컬 타임존 기준으로 datetime-local 값 생성
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 export default function AdminEventEditPage({
   params,
@@ -44,280 +54,419 @@ export default function AdminEventEditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
 
-  const [type, setType] = useState<EventType>(INITIAL.type);
-  const [title, setTitle] = useState(INITIAL.title);
-  const [category, setCategory] = useState<EventCategory>(INITIAL.category);
-  const [venue, setVenue] = useState(INITIAL.venue);
-  const [posterColor, setPosterColor] = useState(INITIAL.posterColor);
-  const [posterInitial, setPosterInitial] = useState(INITIAL.posterInitial);
-  const [opensAt, setOpensAt] = useState(INITIAL.opensAt);
-  const [totalSeats, setTotalSeats] = useState(INITIAL.totalSeats);
-  const [entryFeePoints, setEntryFeePoints] = useState(INITIAL.entryFeePoints);
-  const [entryFeeTickets, setEntryFeeTickets] = useState(INITIAL.entryFeeTickets);
-  const [prize, setPrize] = useState(INITIAL.prize);
+  const [event, setEvent] = useState<EventDetail | null>(null);
+  const [isLoading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState<EventCategory>('콘서트');
+  const [venueId, setVenueId] = useState('');
+  const [opensAt, setOpensAt] = useState('');
+  const [totalSeats, setTotalSeats] = useState('');
+  const [entryFeePoints, setEntryFeePoints] = useState('500');
+  const [entryFeeTickets, setEntryFeeTickets] = useState('5');
+  const [prize, setPrize] = useState('');
+  const [posterColor, setPosterColor] = useState('#1E3A8A');
+  const [posterInitial, setPosterInitial] = useState('');
   const [errors, setErrors] = useState<EventFormErrors>({});
+  const [pending, setPending] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const isPaid = type === 'paid';
-  const canDelete = INITIAL.status === 'scheduled';
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const detail = await getEvent(id);
+      setEvent(detail);
+      setTitle(detail.title);
+      setCategory(KR_CATEGORY_MAP[detail.category]);
+      setVenueId(detail.venueId);
+      setOpensAt(toDatetimeLocal(detail.opensAt));
+      setTotalSeats(String(detail.totalSeats));
+      setEntryFeePoints(String(detail.entryFeePoints));
+      setPrize(detail.prize);
+      setPosterColor(detail.posterColor);
+      setPosterInitial(detail.posterInitial ?? '');
+    } catch (e: unknown) {
+      setLoadError(e instanceof Error ? e.message : '이벤트를 불러올 수 없습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const status: EventStatus = event?.status ?? 'scheduled';
+  const canDelete = status === 'scheduled';
+  const selectedVenue = useMemo(() => getAdminVenueOption(venueId), [venueId]);
+  const isReadOnly = status === 'closed' || status === 'cancelled';
+
+  function handleVenueSelect(nextVenueId: string) {
+    setVenueId(nextVenueId);
+    const opt = getAdminVenueOption(nextVenueId);
+    if (opt) {
+      setTotalSeats(String(opt.totalSeats));
+      setTitle(opt.defaultTitle);
+      setCategory(opt.defaultCategory as EventCategory);
+    } else {
+      setTotalSeats('');
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // 수정 폼은 과거의 opensAt를 그대로 유지하는 케이스가 있어
-    // opensAt만 예외적으로 검증에서 제외한다(값을 바꾼 경우에만 검증하고 싶다면
-    // 별도 dirty flag 필요 — 백엔드 연결 시 정리).
+    setSubmitError(null);
+    if (!event) return;
     const found = validateEventForm({
-      type, title, category, venue, posterColor,
-      posterInitial, opensAt, totalSeats,
+      title, category, venueId, opensAt, totalSeats,
       entryFeePoints, entryFeeTickets, prize,
     });
-    // opensAt이 초기값 그대로면 검증 오류 무시(과거 시각 허용).
-    if (opensAt === INITIAL.opensAt) delete found.opensAt;
+    if (opensAt === toDatetimeLocal(event.opensAt)) delete found.opensAt;
     setErrors(found);
     if (hasErrors(found)) return;
 
-    if (IS_DEV) {
-      // eslint-disable-next-line no-console
-      console.info(`[admin/events/${id}/edit] 검증 통과 (API 미연결)`, {
-        type, title, category, venue, posterColor,
-        posterInitial, opensAt, totalSeats,
-        entryFeePoints, entryFeeTickets, prize,
+    setPending(true);
+    try {
+      await adminUpdateEvent(event.eventId, {
+        title: title.trim(),
+        category: BE_CATEGORY_MAP[category],
+        venueId,
+        opensAt: new Date(opensAt).toISOString(),
+        entryFeePoints: Number(entryFeePoints),
+        prize: prize.trim(),
+        posterColor,
+        ...(posterInitial ? { posterInitial } : {}),
       });
+      router.push('/admin/events');
+    } catch (err) {
+      if (err instanceof ApiError) setSubmitError(err.message);
+      else setSubmitError('이벤트 수정 중 오류가 발생했습니다.');
+    } finally {
+      setPending(false);
     }
+  }
+
+  function openCancelModal() {
+    if (!event) return;
+    setCancelError(null);
+    setCancelOpen(true);
+  }
+
+  function closeCancelModal() {
+    if (cancelPending) return;
+    setCancelOpen(false);
+    setCancelError(null);
+  }
+
+  async function handleConfirmCancel(reason: string) {
+    if (!event) return;
+    setCancelPending(true);
+    setCancelError(null);
+    try {
+      await adminCancelEvent(event.eventId, reason);
+      router.push('/admin/events');
+    } catch (err) {
+      setCancelError(err instanceof ApiError ? err.message : '이벤트 취소 중 오류가 발생했습니다.');
+    } finally {
+      setCancelPending(false);
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-8 w-40 bg-bg-subtle rounded animate-pulse" />
+        <div className="card p-8 space-y-3">
+          <div className="h-4 w-1/2 bg-bg-subtle rounded animate-pulse" />
+          <div className="h-4 w-1/3 bg-bg-subtle rounded animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError || !event) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-sm text-danger-text">
+          {loadError ?? '이벤트를 찾을 수 없습니다.'}
+        </p>
+        <Link href="/admin/events" className="btn btn-outline btn-sm">
+          목록으로
+        </Link>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-
-      {/* 헤더 */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs text-text-tertiary mb-1">
-            <Link href="/admin/events" className="hover:text-text-secondary">이벤트 관리</Link>
+            <Link href="/admin/events" className="hover:text-text-secondary">
+              이벤트 관리
+            </Link>
             {' / '}
             <span>수정</span>
           </p>
           <h1 className="text-2xl font-bold text-text">이벤트 수정</h1>
-          <p className="mt-1 text-xs text-text-tertiary font-mono-tabular">#{id}</p>
+          <p className="mt-1 text-xs text-text-tertiary font-mono-tabular">
+            #{event.eventId}
+          </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          {INITIAL.status === 'open' && (
-            <button type="button" className="btn btn-outline btn-sm">강제 정산</button>
-          )}
           {canDelete && (
-            <button type="button" className="btn btn-danger btn-sm">삭제</button>
+            <button
+              type="button"
+              onClick={openCancelModal}
+              disabled={pending || cancelPending}
+              className="btn btn-danger btn-sm"
+            >
+              취소·환불
+            </button>
           )}
         </div>
       </div>
 
-      {/* 미연결 배너 */}
-      <div className="rounded-lg border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text">
-        <p className="font-semibold">API 미연결</p>
-        <p className="text-xs mt-0.5 opacity-90">
-          이 폼은 아직 백엔드에 연결되어 있지 않습니다. 저장 버튼을 눌러도 실제로 저장되지 않으니
-          검증만 참고해 주세요.
-        </p>
-      </div>
+      <StatsSummaryCard
+        title={event.title}
+        loader={() => getAdminEventStats(event.eventId)}
+        showRevenue
+      />
+
+      {submitError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-danger-border bg-danger-bg px-4 py-3 text-sm text-danger-text"
+        >
+          {submitError}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-6">
         <form className="card p-6 space-y-6" onSubmit={handleSubmit} noValidate>
-          {/* 타입 */}
-          <Field label="이벤트 타입" required error={errors.type}>
-            <div className="flex gap-2">
-              {(['live', 'paid'] as EventType[]).map((t) => (
-                <label
-                  key={t}
-                  className={[
-                    'flex-1 border rounded-lg px-4 py-3 cursor-pointer transition-colors',
-                    t === type ? 'border-primary bg-primary-subtle' : 'border-border hover:border-border-strong',
-                  ].join(' ')}
-                >
-                  <input
-                    type="radio"
-                    name="type"
-                    value={t}
-                    checked={t === type}
-                    onChange={() => setType(t)}
-                    className="sr-only"
-                  />
-                  <p className="font-semibold text-text">{t === 'live' ? '라이브 (무료)' : '유료'}</p>
-                </label>
-              ))}
-            </div>
-          </Field>
-
           <Field label="제목" required error={errors.title}>
             <TextInput value={title} onChange={setTitle} maxLength={LIMITS.title.max} />
           </Field>
 
-          <Field label="카테고리" required error={errors.category}>
+          <Field
+            label="카테고리"
+            required
+            error={errors.category}
+            hint={status === 'open' ? '진행 중이라 수정 불가' : undefined}
+          >
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as EventCategory)}
-              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text focus:outline-none focus:ring-1 focus:ring-primary"
+              disabled={status === 'open' || isReadOnly}
+              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle disabled:cursor-not-allowed"
             >
-              {EVENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {EVENT_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </Field>
 
-          <Field label="공연장" required error={errors.venue}>
-            <TextInput value={venue} onChange={setVenue} maxLength={LIMITS.venue.max} />
+          <Field
+            label="공연장"
+            required
+            hint={status === 'open' ? '진행 중이라 수정 불가' : '등록된 공연장만 선택 가능'}
+            error={errors.venueId}
+          >
+            <div
+              role="radiogroup"
+              aria-label="공연장 선택"
+              className="flex flex-wrap gap-2"
+            >
+              {AVAILABLE_VENUES.map((v) => {
+                const active = v.venueId === venueId;
+                return (
+                  <button
+                    key={v.venueId}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={status === 'open' || isReadOnly}
+                    onClick={() => handleVenueSelect(v.venueId)}
+                    className={[
+                      'flex-1 min-w-[160px] text-left border rounded-lg px-3 py-2.5 transition-colors',
+                      active
+                        ? 'border-primary bg-primary-subtle'
+                        : 'border-border bg-bg-surface hover:border-border-strong',
+                      status === 'open' || isReadOnly
+                        ? 'opacity-60 cursor-not-allowed'
+                        : '',
+                    ].join(' ')}
+                  >
+                    <p className="text-sm font-semibold text-text truncate">{v.name}</p>
+                    <p className="text-[11px] text-text-tertiary mt-0.5 font-mono-tabular">
+                      오픈 {v.totalSeats.toLocaleString()}석
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </Field>
 
-          <div className="grid grid-cols-[1fr_120px] gap-3">
-            <Field label="포스터 이니셜" error={errors.posterInitial}>
-              <TextInput
-                value={posterInitial}
-                onChange={(v) => setPosterInitial(normalizePosterInitial(v))}
-                maxLength={LIMITS.posterInitial.max}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="오픈 시각" required hint="정각(HH:00)만" error={errors.opensAt}>
+              <input
+                type="datetime-local"
+                step={3600}
+                value={opensAt}
+                onChange={(e) => setOpensAt(snapOpensAtToHour(e.target.value))}
+                disabled={status === 'open' || isReadOnly}
+                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle disabled:cursor-not-allowed"
               />
             </Field>
-            <Field label="배경 색상" error={errors.posterColor}>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={isHexColor(posterColor) ? posterColor : '#000000'}
-                  onChange={(e) => setPosterColor(e.target.value)}
-                  className="w-10 h-10 rounded border border-border cursor-pointer"
-                />
-                <input
-                  type="text"
-                  value={posterColor}
-                  onChange={(e) => setPosterColor(e.target.value)}
-                  maxLength={7}
-                  pattern="^#[0-9a-fA-F]{6}$"
-                  className="flex-1 min-w-0 px-2 py-2 rounded-md border border-border bg-bg-surface text-text text-sm font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </div>
+            <Field label="오픈 좌석 수" required error={errors.totalSeats}>
+              <input
+                type="number"
+                value={totalSeats}
+                readOnly
+                disabled
+                className="w-full px-3 py-2 rounded-md border border-border bg-bg-subtle text-text font-mono-tabular disabled:cursor-not-allowed"
+              />
             </Field>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="오픈 시각" required error={errors.opensAt}>
+            <Field label="참여비 (포인트)" required error={errors.entryFeePoints}>
               <input
-                type="datetime-local"
-                value={opensAt}
-                onChange={(e) => setOpensAt(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text focus:outline-none focus:ring-1 focus:ring-primary"
+                type="number"
+                min={LIMITS.entryFeePoints.min}
+                max={LIMITS.entryFeePoints.max}
+                step={1}
+                value={entryFeePoints}
+                onChange={(e) => setEntryFeePoints(e.target.value)}
+                disabled={status === 'open' || isReadOnly}
+                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle"
               />
             </Field>
-            <Field label="총 좌석 수" required error={errors.totalSeats}>
+            <Field label="티켓 환산 (표시용)" hint="UI 참고용 · 미저장">
               <input
                 type="number"
                 inputMode="numeric"
-                min={LIMITS.totalSeats.min}
-                max={LIMITS.totalSeats.max}
+                min={LIMITS.entryFeeTickets.min}
+                max={LIMITS.entryFeeTickets.max}
                 step={1}
-                value={totalSeats}
-                onChange={(e) => setTotalSeats(e.target.value)}
+                value={entryFeeTickets}
+                onChange={(e) => setEntryFeeTickets(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </Field>
           </div>
 
-          {isPaid && (
-            <>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="참여비 (포인트)" required error={errors.entryFeePoints}>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={LIMITS.entryFeePoints.min}
-                    max={LIMITS.entryFeePoints.max}
-                    step={1}
-                    value={entryFeePoints}
-                    onChange={(e) => setEntryFeePoints(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </Field>
-                <Field label="참여비 (티켓)" required error={errors.entryFeeTickets}>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={LIMITS.entryFeeTickets.min}
-                    max={LIMITS.entryFeeTickets.max}
-                    step={1}
-                    value={entryFeeTickets}
-                    onChange={(e) => setEntryFeeTickets(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </Field>
-              </div>
-
-              <Field label="상품" required error={errors.prize}>
-                <TextInput value={prize} onChange={setPrize} maxLength={LIMITS.prize.max} />
-              </Field>
-            </>
-          )}
+          <Field label="상품" required error={errors.prize}>
+            <TextInput value={prize} onChange={setPrize} maxLength={LIMITS.prize.max} />
+          </Field>
 
           <div className="flex gap-2 pt-4 border-t border-border">
             <Link href="/admin/events" className="btn btn-neutral flex-1">
               취소
             </Link>
-            <button type="submit" className="btn btn-solid flex-1">
-              변경 저장
+            <button
+              type="submit"
+              disabled={pending || isReadOnly}
+              className="btn btn-solid flex-1"
+            >
+              {pending ? '저장 중…' : '변경 저장'}
             </button>
           </div>
         </form>
 
-        {/* 상태·이벤트 요약 사이드 */}
         <aside className="space-y-4">
           <div className="card p-5 space-y-3">
-            <p className="text-xs font-semibold text-text-tertiary tracking-wider uppercase">현재 상태</p>
+            <p className="text-xs font-semibold text-text-tertiary tracking-wider uppercase">
+              현재 상태
+            </p>
             <div>
-              <span className={[
-                'badge',
-                INITIAL.status === 'scheduled' ? 'badge-info' : INITIAL.status === 'open' ? 'badge-danger' : 'badge-neutral',
-              ].join(' ')}>
-                {INITIAL.status === 'scheduled' ? '오픈 예정' : INITIAL.status === 'open' ? '진행 중' : '종료'}
+              <span
+                className={[
+                  'badge',
+                  status === 'scheduled'
+                    ? 'badge-info'
+                    : status === 'open'
+                      ? 'badge-danger'
+                      : 'badge-neutral',
+                ].join(' ')}
+              >
+                {STATUS_LABEL[status]}
               </span>
             </div>
             <p className="text-xs text-text-secondary">
-              {INITIAL.status === 'scheduled'
-                ? '오픈 전까지 수정·삭제 가능합니다.'
-                : INITIAL.status === 'open'
-                ? '진행 중 이벤트는 강제 정산으로 즉시 종료할 수 있습니다.'
-                : '종료된 이벤트는 참고용으로만 열람됩니다.'}
+              {status === 'scheduled'
+                ? '오픈 전까지 전 필드 수정·취소 가능'
+                : status === 'open'
+                  ? '진행 중: 제목·포스터·상품만 수정 가능'
+                  : '종료·취소 이벤트는 수정 불가'}
             </p>
           </div>
 
           <div className="card p-5 space-y-2">
-            <p className="text-xs font-semibold text-text-tertiary tracking-wider uppercase">지표</p>
+            <p className="text-xs font-semibold text-text-tertiary tracking-wider uppercase">
+              지표
+            </p>
             <div className="text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="text-text-secondary">참여 신청</span>
-                <span className="font-mono-tabular font-semibold text-text">342명</span>
+                <span className="text-text-secondary">신청자</span>
+                <span className="font-mono-tabular font-semibold text-text">
+                  {event.registeredCount}명
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-text-secondary">누적 수익</span>
-                <span className="font-mono-tabular font-semibold text-text">171,000P</span>
+                <span className="text-text-secondary">총 좌석</span>
+                <span className="font-mono-tabular font-semibold text-text">
+                  {event.totalSeats.toLocaleString()}석
+                </span>
               </div>
             </div>
           </div>
         </aside>
       </div>
 
+      <EventCancelModal
+        open={cancelOpen}
+        eventTitle={event.title}
+        registeredCount={event.registeredCount}
+        entryFeePoints={event.entryFeePoints}
+        pending={cancelPending}
+        errorMessage={cancelError}
+        onConfirm={handleConfirmCancel}
+        onClose={closeCancelModal}
+      />
     </div>
   );
 }
 
-// ── 하위 컴포넌트 ────────────────────────────────────
-
 function Field({
-  label, required, error, children,
+  label, required, hint, error, children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   error?: string;
   children: React.ReactNode;
 }) {
+  // 헤더는 항상 label 한 줄로 유지 → grid 열끼리 input 세로 위치 자동 일치.
+  // hint 는 input 아래 헬퍼 텍스트로 배치.
   return (
     <label className="block space-y-1.5">
-      <span className="text-xs font-semibold text-text-secondary">
+      <span className="block text-xs font-semibold text-text-secondary truncate">
         {label}
         {required && <span className="text-danger-text ml-0.5">*</span>}
       </span>
       {children}
+      {hint && !error && (
+        <span className="block text-[11px] text-text-tertiary">{hint}</span>
+      )}
       {error && (
         <span className="block text-xs text-danger-text" role="alert">
           {error}
