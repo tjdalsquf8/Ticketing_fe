@@ -175,14 +175,15 @@ async function fetchEnvelope<T, M = unknown>(
 ): Promise<SuccessEnvelope<T, M>> {
   const hasBody = body !== undefined;
   const isMutating = method !== "GET";
-  // CSRF 심층 방어:
-  //  1) 백엔드 쿠키는 SameSite=strict → cross-site 자동 전송 차단(주 방어)
-  //  2) 상태 변경 요청에 커스텀 헤더 X-Requested-With 부착
-  //     → CORS "simple request" 조건을 벗어나 브라우저가 preflight OPTIONS를 강제
-  //     → 백엔드 CORS 화이트리스트가 오리진을 검증 가능
-  //     → 백엔드에서 이 헤더 부재 요청은 거부하도록 확장 가능
-  //  3) body가 없는 PATCH/DELETE(예: cancelRound)는 Content-Type이 없어
-  //     preflight가 걸리지 않는 케이스를 이 헤더가 커버함.
+  // CSRF 심층 방어 (백엔드 확인 완료, 2026-08-28):
+  //  1) 인증 쿠키는 SameSite=Strict → cross-site 자동 전송 차단(주 방어, 백엔드 확인됨)
+  //  2) body 있는 상태 변경 요청은 Content-Type: application/json을 백엔드가 강제
+  //     → <form> 기반 단순요청(GET/POST, form-urlencoded 등)으로는 이 타입을 못 만들어
+  //       CSRF <form> 벡터가 걸러짐(실질적 2차 방어, 백엔드 확인됨)
+  //  3) X-Requested-With 헤더는 CORS preflight를 강제하는 브라우저 레벨 효과는 있지만
+  //     백엔드가 이 헤더 값 자체를 검증하지는 않음 — 부착해도 무해하나 방어로 간주하지 말 것.
+  //  4) body가 없는 PATCH/DELETE(예: cancelRound)는 위 2)의 Content-Type 강제 대상이 아니므로
+  //     이런 엔드포인트를 늘릴 땐 별도 CSRF 방어(SameSite만으로 충분한지)를 백엔드와 재확인할 것.
   const headers: HeadersInit = {
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
     ...(isMutating ? { "X-Requested-With": "XMLHttpRequest" } : {}),
