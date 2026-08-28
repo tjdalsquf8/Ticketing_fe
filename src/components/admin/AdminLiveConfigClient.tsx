@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   getLiveConfig,
-  putLiveEventConfig,
+  putLiveVenueConfig,
   putLiveScheduleConfig,
   type LiveConfig,
 } from '@/lib/adminLive';
@@ -15,16 +15,17 @@ import AdminVenuePreviewMap from './AdminVenuePreviewMap';
 
 /* ──────────────────────────────────────────
    /admin/live/config — 실시간 라이브 공연 설정
-   ─ 매시 정각 자동 생성될 회차에 어떤 공연을 배치할지 결정
+   ─ 매시 정각 자동 생성될 회차에 어떤 공연장(venue)을 배치할지 결정
    ─ 좌석 라벨은 venue config에서 결정적으로 파생 (공연별 liveSeatsPerZone × zone 수)
    ─ GET /api/admin/live/config              : 현재 세팅 조회 (양쪽 통합)
-   ─ PUT /api/admin/live/config/event        : 공연 배치만 저장
+   ─ PUT /api/admin/live/config/venue        : 공연장 배치만 저장 (defaultVenueId 정수 PK)
    ─ PUT /api/admin/live/config/schedule     : 회차 제외 시간대만 저장
    ─ 두 설정은 완전 독립. 각 카드에 개별 저장 버튼.
+   ─ BE 리팩터: 기존 defaultEventId → defaultVenueId (venue 참조). eventId 로직 폐기.
    ────────────────────────────────────────── */
 
-function findLiveEventByBackendId(backendEventId: number): LiveEvent | undefined {
-  return LIVE_EVENTS.find((e) => e.eventId === backendEventId);
+function findLiveEventByBackendVenueId(venueId: number): LiveEvent | undefined {
+  return LIVE_EVENTS.find((e) => e.backendVenueId === venueId);
 }
 
 export default function AdminLiveConfigClient() {
@@ -52,7 +53,7 @@ export default function AdminLiveConfigClient() {
         if (!alive) return;
         setInitial(cfg);
         if (cfg) {
-          const matched = findLiveEventByBackendId(cfg.defaultEventId);
+          const matched = findLiveEventByBackendVenueId(cfg.defaultVenueId);
           if (matched) setSelectedLiveId(matched.id);
           setExcludedHours(new Set(cfg.excludedHours ?? []));
         }
@@ -69,11 +70,11 @@ export default function AdminLiveConfigClient() {
   }, [reloadTick]);
 
   const selected = LIVE_EVENTS.find((e) => e.id === selectedLiveId);
-  const appliedEvent = initial ? findLiveEventByBackendId(initial.defaultEventId) : null;
+  const appliedEvent = initial ? findLiveEventByBackendVenueId(initial.defaultVenueId) : null;
   const initialExcludedSet = new Set(initial?.excludedHours ?? []);
 
   const eventDirty =
-    !!selected && (!initial || initial.defaultEventId !== selected.eventId);
+    !!selected && (!initial || initial.defaultVenueId !== selected.backendVenueId);
   const scheduleDirty =
     excludedHours.size !== initialExcludedSet.size ||
     Array.from(excludedHours).some((h) => !initialExcludedSet.has(h));
@@ -112,8 +113,8 @@ export default function AdminLiveConfigClient() {
 
     setSavingEvent(true);
     try {
-      await putLiveEventConfig({
-        defaultEventId: selected.eventId,
+      await putLiveVenueConfig({
+        defaultVenueId: selected.backendVenueId,
         defaultSeatLabels: seatLabels,
       });
       setEventSavedAt(new Date());
@@ -360,11 +361,11 @@ export default function AdminLiveConfigClient() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             <MetaRow
-              label="공연"
-              value={appliedEvent?.title ?? `event #${initial.defaultEventId} (미등록 공연)`}
+              label="공연장"
+              value={appliedEvent?.title ?? `venue #${initial.defaultVenueId} (미등록 공연장)`}
               strong
             />
-            <MetaRow label="이벤트 ID"   value={`#${initial.defaultEventId}`} mono />
+            <MetaRow label="공연장 ID"   value={`#${initial.defaultVenueId}`} mono />
             <MetaRow label="회차당 좌석" value={`${initial.defaultSeatLabels.length}석`} mono />
             <MetaRow
               label="하루 회차 수"
@@ -405,7 +406,7 @@ function SelectedPreview({ event }: { event: LiveEvent }) {
             <p className="text-xs text-text-secondary truncate mt-0.5">{event.venueName}</p>
           </div>
           <p className="text-[11px] text-text-tertiary font-mono-tabular shrink-0">
-            event #{event.eventId}
+            venue #{event.backendVenueId}
           </p>
         </div>
 

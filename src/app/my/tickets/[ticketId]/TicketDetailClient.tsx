@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import TicketCard from '@/components/booking/TicketCard';
 import { useAuth } from '@/contexts/AuthContext';
-import { getLiveEventByEventId } from '@/data/live';
 import { ApiError } from '@/lib/errors';
 import { getTicket, type TicketDetail } from '@/lib/tickets';
 import { getEvent, type EventDetail } from '@/lib/events';
@@ -75,11 +74,11 @@ export default function TicketDetailClient({ ticketId }: Props) {
   }, [ticket]);
 
   const isEventTicket = !!ticket && ticket.roundId == null;
+  // 라이브 티켓 카탈로그 매칭은 public 라이브 응답에 venueId(slug) 가 실려있지 않으면 불가.
+  // 티켓 응답 자체에도 venue 정보가 없으므로 제네릭 폴백 라벨만 사용한다.
   const ticketTitle = isEventTicket
     ? event?.title ?? '유료 이벤트'
-    : (ticket?.eventId != null
-        ? getLiveEventByEventId(ticket.eventId)?.title
-        : undefined) ?? '실시간 회차';
+    : '실시간 회차';
 
   const backToList = (
     <Link

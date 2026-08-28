@@ -18,7 +18,17 @@ import { HANGANG_FESTIVAL } from './hangangFestival';
 
 export interface LiveEvent {
   id: string;             // URL param과 매칭 (예: /event/:id)
-  eventId: number;        // 백엔드 eventId (랭킹/세션 API 파라미터)
+  /**
+   * 백엔드 venues 테이블의 정수 PK.
+   * admin `PUT /admin/live/config/venue` body(`defaultVenueId: number`)에 실어 보낸다.
+   * BE 리팩터로 라이브 config·라운드가 venue 참조로 바뀌며 기존 `eventId` 필드는 폐기됨.
+   */
+  backendVenueId: number;
+  /**
+   * 백엔드 venues.slug 문자열. public 라이브 응답의 `round.venueId`(slug)와 매칭.
+   * `venue.id` 와 대체로 같지만 배포된 실제 slug 가 우선 (예: jamsil-olympic-main-v1).
+   */
+  backendVenueSlug: string;
   title: string;
   category: string;
   venueName: string;
@@ -49,7 +59,8 @@ function nextHour(): Date {
 export const LIVE_EVENTS: LiveEvent[] = [
   {
     id: 'kspo-dome-1',
-    eventId: 1001,
+    backendVenueId: 1,
+    backendVenueSlug: 'kspo-dome-v1',
     title: '2026 K-POP GRAND CONCERT — KSPO돔',
     category: '콘서트',
     venueName: 'KSPO돔 (올림픽공원 체조경기장)',
@@ -64,7 +75,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // liveSeatsPerZone 30 × 54 = 1,620개 (백엔드 2000개 상한 이내).
   {
     id: 'gocheok-1',
-    eventId: 1003,
+    backendVenueId: 2,
+    backendVenueSlug: 'gocheok-skydome-v1',
     title: '2026 SUMMER SONIC — 고척스카이돔',
     category: '콘서트',
     venueName: '고척스카이돔',
@@ -80,7 +92,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 공평성 원칙에 따라 외야도 seat-mode로 통일.
   {
     id: 'jamsil-baseball-1',
-    eventId: 1005,
+    backendVenueId: 3,
+    backendVenueSlug: 'jamsil-baseball-v1',
     title: '2026 SEOUL SUMMER LIVE — 잠실 야구장',
     category: '콘서트',
     venueName: '잠실 야구장',
@@ -96,7 +109,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // KBO 랜더스 실제 등급명(네이비/레드/블루/그린)을 콘서트 티어로 재구획 + 랜더스라이브존 특수석.
   {
     id: 'ssg-landers-1',
-    eventId: 1007,
+    backendVenueId: 4,
+    backendVenueSlug: 'ssg-landers-v1',
     title: '2026 INCHEON WAVE FESTIVAL — SSG랜더스필드',
     category: '콘서트',
     venueName: '인천 SSG랜더스필드',
@@ -113,7 +127,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 실 배치 총 7,143석 (FLOOR 2,182 + 3층 3,149 + 4층 1,812).
   {
     id: 'inspire-arena-1',
-    eventId: 1009,
+    backendVenueId: 5,
+    backendVenueSlug: 'inspire-arena-v1',
     title: '2026 GLOBAL K-POP AWARDS — 인스파이어 아레나',
     category: '콘서트',
     venueName: '인스파이어 아레나',
@@ -129,7 +144,9 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 등급: VIP 피트 / 그라운드 / SR 정면 / R / S / A (실 투어 대표 세팅 하드코딩).
   {
     id: 'jamsil-olympic-1',
-    eventId: 1011,
+    backendVenueId: 6,
+    // BE 실제 slug 는 'jamsil-olympic-main-v1' — FE 카탈로그 venue.id('jamsil-olympic-v1')와 다르므로 명시적으로 매핑.
+    backendVenueSlug: 'jamsil-olympic-main-v1',
     title: '2026 WORLD TOUR FINAL — 잠실 주경기장',
     category: '콘서트',
     venueName: '잠실 종합운동장 주경기장',
@@ -145,7 +162,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 등급: VIP(1층 중앙 앞·중) / R(1층 나머지 + 2층 앞 중앙) / S(2층 나머지 + 3층 앞) / A(3층 사이드·뒷).
   {
     id: 'bluesquare-1',
-    eventId: 1013,
+    backendVenueId: 7,
+    backendVenueSlug: 'bluesquare-main-v1',
     title: '뮤지컬 팬텀 오브 디 오페라 — 블루스퀘어',
     category: '뮤지컬',
     venueName: '블루스퀘어 대극장',
@@ -161,7 +179,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 등급: VIP / R / S / A / B / C / D (프로시니엄 4단 발코니 최대 6등급 + VIP).
   {
     id: 'sejong-grand-1',
-    eventId: 1015,
+    backendVenueId: 8,
+    backendVenueSlug: 'sejong-grand-v1',
     title: '2026 세종 크로스오버 콘서트 — 세종문화회관',
     category: '콘서트',
     venueName: '세종문화회관 대극장',
@@ -177,7 +196,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 공평성 원칙에 따라 1층 스탠딩도 좌석 모드로 통일 (가/나/다/라).
   {
     id: 'yes24-livehall-1',
-    eventId: 1017,
+    backendVenueId: 9,
+    backendVenueSlug: 'yes24-livehall-v1',
     title: '인디밴드 페스티벌 — YES24 라이브홀',
     category: '콘서트',
     venueName: 'YES24 라이브홀',
@@ -193,7 +213,8 @@ export const LIVE_EVENTS: LiveEvent[] = [
   // 공평성 원칙에 따라 스탠딩/피크닉 존도 좌석 모드로 통일.
   {
     id: 'hangang-festival-1',
-    eventId: 1019,
+    backendVenueId: 10,
+    backendVenueSlug: 'hangang-festival-v1',
     title: '2026 SEOUL RIVER FEST — 한강 페스티벌',
     category: '페스티벌',
     venueName: '한강 페스티벌 필드',
@@ -221,9 +242,76 @@ export function getLiveEvent(id: string): LiveEvent | null {
 }
 
 /**
- * 백엔드 eventId 로 라이브 이벤트 조회. 백엔드 응답의 eventId 를 로컬 카탈로그와 매핑.
+ * public 라이브 응답의 `round.venueId`(slug 문자열) 로 라이브 이벤트 조회.
  * 매핑 실패 시 null → UI 는 fallback(제네릭 카드) 표시.
  */
-export function getLiveEventByEventId(eventId: number): LiveEvent | null {
-  return LIVE_EVENTS.find((e) => e.eventId === eventId) ?? null;
+export function getLiveEventByVenueSlug(venueSlug: string): LiveEvent | null {
+  return LIVE_EVENTS.find((e) => e.backendVenueSlug === venueSlug) ?? null;
+}
+
+/**
+ * admin `LiveConfig.defaultVenueId`(정수 PK) 로 라이브 이벤트 조회.
+ * `AdminLiveConfigClient` 가 현재 배치된 공연장을 표시할 때 사용.
+ */
+export function getLiveEventByBackendVenueId(venueId: number): LiveEvent | null {
+  return LIVE_EVENTS.find((e) => e.backendVenueId === venueId) ?? null;
+}
+
+/* ─────────────────────────────────────────────────────────
+   관리자 콘솔용 — 등록된 공연장 선택 옵션
+   LIVE_EVENTS 의 venue 를 유니크하게 뽑아 관리자 폼에서 카드 선택 UI 로 노출.
+   좌석 배치가 실제로 존재하는 공연장만 이벤트에 사용 가능하도록 강제한다.
+   ───────────────────────────────────────────────────────── */
+
+/**
+ * venue.zones 를 순회해 실제 예매 가능한 좌석 총합을 계산.
+ * seatRows.seatCount 합. standing 등 seatRows 없는 구역은 0.
+ * 관리자 폼·미리보기에서 "오픈 좌석수" 로 노출.
+ */
+export function computeBookableSeats(venue: VenueConfig): number {
+  return venue.zones.reduce((sum, z) => {
+    if (!z.seatRows) return sum;
+    return sum + z.seatRows.reduce((s, r) => s + r.seatCount, 0);
+  }, 0);
+}
+
+export interface AdminVenueOption {
+  /** 백엔드 참조용 venue.id — 예: 'kspo-dome-v1' */
+  venueId: string;
+  /** 표시명 — 예: 'KSPO돔 (올림픽공원 체조경기장)' */
+  name: string;
+  /** 실제 예매 가능한 좌석 총합 (venue.zones 순회 계산). */
+  totalSeats: number;
+  /** 좌석 배치 layout 라벨 — 미리보기 부제로 노출 */
+  layout?: string;
+  /** 미리 만들어진 공연장 대표 이미지 (LIVE_EVENTS.posterImage). 폼 미리보기 배경. */
+  posterImage: string;
+  /** 폼 진입/venue 선택 시 자동 채워지는 기본 제목 (LIVE_EVENTS.title). */
+  defaultTitle: string;
+  /** 폼 진입/venue 선택 시 자동 세팅되는 기본 카테고리. */
+  defaultCategory: string;
+}
+
+export const AVAILABLE_VENUES: AdminVenueOption[] = (() => {
+  const seen = new Set<string>();
+  const out: AdminVenueOption[] = [];
+  for (const ev of LIVE_EVENTS) {
+    if (seen.has(ev.venue.id)) continue;
+    seen.add(ev.venue.id);
+    out.push({
+      venueId: ev.venue.id,
+      name: ev.venue.name,
+      totalSeats: computeBookableSeats(ev.venue),
+      layout: ev.venue.layout,
+      posterImage: ev.posterImage,
+      defaultTitle: ev.title,
+      defaultCategory: ev.category,
+    });
+  }
+  return out;
+})();
+
+/** venueId 로 공연장 옵션 조회. 없으면 null. */
+export function getAdminVenueOption(venueId: string): AdminVenueOption | null {
+  return AVAILABLE_VENUES.find((v) => v.venueId === venueId) ?? null;
 }

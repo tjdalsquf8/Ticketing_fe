@@ -4,13 +4,17 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   cancelRound,
+  getAdminRoundStats,
   getRoundDetail,
   listRounds,
+  runAdminLiveCron,
+  type LiveCronJob,
   type LiveRound,
   type LiveRoundDetail,
   type LiveRoundStatus,
 } from '@/lib/adminLive';
 import { ApiError } from '@/lib/errors';
+import StatsSummaryCard from '@/components/admin/StatsSummaryCard';
 
 /* ──────────────────────────────────────────
    /admin/live — 실시간 회차 운영 콘솔
@@ -161,6 +165,11 @@ export default function AdminLiveClient() {
         </Link>
       </div>
 
+      {/* 크론 관리 — 서버 다운타임 복구용 escape hatch */}
+      <CronControlPanel
+        onRoundsChanged={() => reload()}
+      />
+
       {/* 일자 네비 */}
       <div className="card p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">
@@ -266,7 +275,6 @@ export default function AdminLiveClient() {
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">시각</th>
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">회차</th>
-                <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">이벤트</th>
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">상태</th>
                 {/* 참여·액션은 center 정렬(헤더·데이터 동일) → 세로 일직선 (헤더 텍스트 폭과 데이터 폭이 달라도 중심 x좌표 일치). */}
                 <th className="text-center px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">참여</th>
@@ -277,11 +285,11 @@ export default function AdminLiveClient() {
             </thead>
             <tbody className="divide-y divide-border">
               {error ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-danger-text">{error}</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-danger-text">{error}</td></tr>
               ) : loading && !rounds ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td></tr>
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td></tr>
               ) : filtered && filtered.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-text-secondary">
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-text-secondary">
                   {rounds && rounds.length === 0 ? '해당 일자에 회차가 없습니다.' : '이 상태의 회차가 없습니다.'}
                 </td></tr>
               ) : (
@@ -298,7 +306,6 @@ export default function AdminLiveClient() {
                         <span className="text-text-tertiary text-xs"> – {formatTime(r.closesAt)}</span>
                       </td>
                       <td className="px-4 py-3 font-mono-tabular text-xs text-text-tertiary truncate">#{r.id}</td>
-                      <td className="px-4 py-3 text-xs text-text-secondary font-mono-tabular truncate">event #{r.eventId}</td>
                       <td className="px-4 py-3 truncate"><span className={`badge ${st.cls}`}>{st.text}</span></td>
                       <td className="px-4 py-3 text-center font-mono-tabular text-text truncate">{r.participantCount}</td>
                       {/* 중지 컬럼(별도 <td>) — table col width가 모든 행에서 동일해 vertical align 보장. */}
@@ -527,11 +534,18 @@ function RoundDetailDrawer({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <InfoRow k="이벤트" v={`#${detail.round.eventId}`} />
                 <InfoRow k="상태"   v={STATUS_META[detail.round.status].text} />
+                <InfoRow k="회차"   v={`#${detail.round.id}`} />
                 <InfoRow k="오픈"   v={formatKST(detail.round.opensAt)} />
                 <InfoRow k="종료"   v={formatKST(detail.round.closesAt)} />
               </div>
+
+              {/* 결과 통계 — 라이브는 무료라 매출 필드 렌더 skip */}
+              <StatsSummaryCard
+                title={`회차 #${roundId}`}
+                loader={() => getAdminRoundStats(roundId)}
+                showRevenue={false}
+              />
 
               <div>
                 {(() => {
@@ -614,5 +628,127 @@ function MiniStat({ label, value }: { label: string; value: number }) {
       <p className="text-[10px] font-semibold text-text-tertiary tracking-wide">{label}</p>
       <p className="mt-0.5 text-lg font-bold font-mono-tabular text-text">{value}</p>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 크론 수동 실행 패널
+// ─ 서버 다운타임 동안 놓친 KST 00시 회차 pre-create 백필 (ensure),
+//   회차 상태 전이(scheduled → open → closed) 즉시 실행 (transition) 용 escape hatch.
+// ─ 실행 성공 시 회차 목록 자동 리페치.
+// ═══════════════════════════════════════════════════════
+
+type CronJobMeta = {
+  key: LiveCronJob;
+  label: string;
+  desc: string;
+};
+
+const CRON_JOBS: CronJobMeta[] = [
+  { key: 'ensure',     label: '회차 생성 (ensure)',     desc: '누락된 회차를 pre-create. 다운타임 백필용.' },
+  { key: 'transition', label: '상태 전이 (transition)', desc: 'scheduled → open → closed 전이 강제.'      },
+];
+
+type ToastState = { tone: 'success' | 'danger'; text: string } | null;
+
+function CronControlPanel({ onRoundsChanged }: { onRoundsChanged: () => void }) {
+  const [running, setRunning] = useState<LiveCronJob | null>(null);
+  const [fromMidnight, setFromMidnight] = useState(false);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  // toast 자동 소멸 (3.5s) — 여러 번 눌러도 최신 toast 만 살아있음.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function execute(meta: CronJobMeta) {
+    setRunning(meta.key);
+    setToast(null);
+    try {
+      const result = await runAdminLiveCron(
+        meta.key,
+        meta.key === 'ensure' ? { fromMidnight } : undefined,
+      );
+      const suffix = meta.key === 'ensure' && result.fromMidnight ? ' · 00시부터 백필' : '';
+      setToast({
+        tone: 'success',
+        text: `${meta.key} 완료 · ${result.durationMs}ms${suffix}`,
+      });
+      onRoundsChanged();
+    } catch (e) {
+      setToast({
+        tone: 'danger',
+        text: e instanceof ApiError ? e.message : `${meta.key} 실행 실패`,
+      });
+    } finally {
+      setRunning(null);
+    }
+  }
+
+  return (
+    <section className="card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-text">크론 관리</h2>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            서버 다운타임 이후 회차 백필 · 상태 전이 강제 실행용. 평상시에는 사용하지 마세요.
+          </p>
+        </div>
+        {toast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={[
+              'shrink-0 max-w-xs text-xs font-medium rounded-md px-3 py-2 border',
+              toast.tone === 'success'
+                ? 'bg-success-bg text-success-text border-success-border'
+                : 'bg-danger-bg text-danger-text border-danger-border',
+            ].join(' ')}
+          >
+            {toast.text}
+          </div>
+        )}
+      </div>
+
+      {/* ensure 전용 옵션 — 오늘 00시부터 백필할지 여부 */}
+      <label className="flex items-center gap-2 text-xs text-text-secondary select-none">
+        <input
+          type="checkbox"
+          checked={fromMidnight}
+          onChange={(e) => setFromMidnight(e.target.checked)}
+          className="h-3.5 w-3.5 rounded border-border accent-[color:var(--color-primary)]"
+        />
+        <span>
+          <strong className="text-text">ensure</strong> 실행 시 KST 오늘 00시부터 백필
+          <span className="text-text-tertiary"> (체크 해제 시 다음 정각부터)</span>
+        </span>
+      </label>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {CRON_JOBS.map((meta) => {
+          const busyThis = running === meta.key;
+          const anyBusy = running !== null;
+          return (
+            <div
+              key={meta.key}
+              className="rounded-lg border border-border bg-bg-subtle p-3 flex flex-col gap-2"
+            >
+              <p className="text-xs font-semibold text-text">{meta.label}</p>
+              <p className="text-[11px] text-text-tertiary flex-1">{meta.desc}</p>
+              <button
+                type="button"
+                onClick={() => void execute(meta)}
+                disabled={anyBusy}
+                className="btn btn-sm btn-outline w-full"
+              >
+                {busyThis ? '실행 중…' : '실행'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

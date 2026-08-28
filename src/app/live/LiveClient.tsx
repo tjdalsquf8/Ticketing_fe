@@ -11,7 +11,7 @@ import {
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
-import { getLiveEventByEventId, type LiveEvent } from '@/data/live';
+import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
 import { ApiError } from '@/lib/errors';
 
 /* ──────────────────────────────────────────
@@ -96,7 +96,7 @@ export default function LiveClient() {
 
   const activeRound: LiveRoundSummary | null = state.current ?? state.next;
   const activeEvent: LiveEvent | null = activeRound
-    ? getLiveEventByEventId(activeRound.eventId)
+    ? getLiveEventByVenueSlug(activeRound.venueId)
     : null;
 
   return (

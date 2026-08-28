@@ -57,7 +57,7 @@ export const ROUTES = {
   },
   admin: {
     liveConfig: `${BASE_URL}/admin/live/config`,
-    liveConfigEvent: `${BASE_URL}/admin/live/config/event`,
+    liveConfigVenue: `${BASE_URL}/admin/live/config/venue`,
     liveConfigSchedule: `${BASE_URL}/admin/live/config/schedule`,
     liveRounds: `${BASE_URL}/admin/live/rounds`,
     liveRoundDetail: (roundId: number | string) =>
@@ -168,22 +168,26 @@ async function fetchEnvelope<T, M = unknown>(
   // 401: 세션 관련 코드(AUTH_*)일 때만 자동 로그아웃/refresh 처리.
   // INVALID_CREDENTIALS 같이 "로그인 시도 실패"로 발생한 401은 forceLogout하면
   // 페이지가 통째로 새로고침되면서 에러 메시지가 사라지므로 그냥 throw만 한다.
+  //
+  // 두 코드 모두 access 미인증 상태(BE 계약):
+  //   AUTH_INVALID_TOKEN   — access 만료·서명 오류
+  //   AUTH_TOKEN_MISSING   — access 쿠키 자체 소실 (TTL 1h 만료로 브라우저가 지운 흔한 케이스)
+  // refresh 쿠키(7일 TTL) 는 별도 관리이므로 어느 쪽이든 refresh 재발급을 먼저 시도해야
+  // 관리자 페이지처럼 오래 머무는 화면에서 억울한 로그아웃이 발생하지 않는다.
   const isSessionAuthError =
     code === 'AUTH_INVALID_TOKEN' || code === 'AUTH_TOKEN_MISSING';
 
   if (res.status === 401 && !_retry && typeof window !== "undefined" && isSessionAuthError) {
-    if (code === 'AUTH_INVALID_TOKEN') {
-      try {
-        const refreshRes = await fetch(ROUTES.auth.refresh, {
-          method: "POST",
-          credentials: "include",
-          headers: { "X-Requested-With": "XMLHttpRequest" },
-        });
-        if (refreshRes.ok) {
-          return fetchEnvelope<T, M>(url, { method, body, headers: extraHeaders, ...rest }, true);
-        }
-      } catch {}
-    }
+    try {
+      const refreshRes = await fetch(ROUTES.auth.refresh, {
+        method: "POST",
+        credentials: "include",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (refreshRes.ok) {
+        return fetchEnvelope<T, M>(url, { method, body, headers: extraHeaders, ...rest }, true);
+      }
+    } catch {}
     forceLogout();
     throw new ApiError(
       getErrorMessage(code, '세션이 만료되었습니다. 다시 로그인해 주세요.'),
