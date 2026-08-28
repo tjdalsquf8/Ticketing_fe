@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import BookingFlow from '@/components/booking/BookingFlow';
+import TicketingDetailLayout, {
+  type TicketingSession,
+} from '@/components/booking/TicketingDetailLayout';
 import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { PRACTICE_EVENTS, type PracticeEvent } from '@/data/practice';
@@ -38,9 +41,6 @@ function countSelectableSeatsByTier(event: PracticeEvent, tierId: string): numbe
 /* 2026년 8월 달력 데이터
    8월 1일 = 토요일(인덱스 6) → 앞에 빈 칸 6개 */
 const AUGUST_2026_OFFSET = 6;
-const AUGUST_2026_DAYS = 31;
-
-const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
 /** '2026.08.05 ~ 2026.08.10' → { startDay: 5, endDay: 10 } */
 function parseEventPeriod(period: string): { startDay: number; endDay: number } {
@@ -87,20 +87,6 @@ export default function PracticeClient() {
   const bookingLockRef = useRef<boolean>(false);
   // 대기 화면에서 새로고침을 감지해 자동으로 예매 진입을 재개하기 위한 플래그
   const [pendingResume, setPendingResume] = useState<boolean>(false);
-
-  /* 달력 셀 배열 생성: offset 만큼 null, 이후 1~31 */
-  const calendarCells: (number | null)[] = [
-    ...Array(AUGUST_2026_OFFSET).fill(null),
-    ...Array.from({ length: AUGUST_2026_DAYS }, (_, i) => i + 1),
-  ];
-  const remainder = calendarCells.length % 7;
-  if (remainder !== 0) {
-    calendarCells.push(...Array(7 - remainder).fill(null));
-  }
-  const calendarWeeks: (number | null)[][] = [];
-  for (let i = 0; i < calendarCells.length; i += 7) {
-    calendarWeeks.push(calendarCells.slice(i, i + 7));
-  }
 
   // 마운트 시 sessionStorage 확인 — 대기 화면에서 새로고침한 경우 이벤트/날짜/회차 + 세션 정보 복원 후 재개 플래그 세팅
   useEffect(() => {
@@ -369,331 +355,71 @@ export default function PracticeClient() {
   }
 
   /* ── 이벤트 상세 화면 ── */
+  const { startDay, endDay } = parseEventPeriod(selectedEvent.period);
+  // 관람일: 이벤트 기간 내 모든 주말 날짜(YYYY-MM-DD) 리스트
+  const availableDates: string[] = [];
+  for (let d = startDay; d <= endDay; d++) {
+    const dow = (AUGUST_2026_OFFSET + d - 1) % 7;
+    if (dow === 0 || dow === 6) {
+      availableDates.push(`2026-08-${String(d).padStart(2, '0')}`);
+    }
+  }
+
+  const seatLoad = Object.entries(selectedEvent.venue.tiers)
+    .map(
+      ([tierId, tier]) =>
+        `${tier.label} ${countSelectableSeatsByTier(selectedEvent, tierId)}`,
+    )
+    .join(' · ');
+
   const infoRows: { label: string; value: React.ReactNode }[] = [
     { label: '장소', value: selectedEvent.venueName },
     { label: '공연기간', value: selectedEvent.period },
     { label: '관람연령', value: '전체 이용가' },
     { label: '혜택', value: '연습 완료 시 랭킹 포인트 적립' },
     { label: '배송', value: '해당 없음 (모바일 티켓)' },
+    { label: '좌석 현황', value: seatLoad },
   ];
+
+  const layoutSessions: TicketingSession[] = selectedEvent.sessions.map(
+    (s, idx) => ({
+      id: String(idx),
+      label: s.label,
+      // 연습은 opensAt 개념이 없음 — 표시용 임시값
+      opensAt: new Date().toISOString(),
+      totalSeats: 0,
+    }),
+  );
 
   return (
     <>
-    <div className="bg-bg-page min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-
-        {/* 뒤로가기 버튼 */}
-        <button
-          type="button"
-          onClick={() => setSelectedEvent(null)}
-          className="btn btn-neutral btn-sm mb-4"
-        >
-          ← 다른 이벤트 선택
-        </button>
-
-        {/* 제목 영역 */}
-        <div className="space-y-1">
-          <p className="text-xs font-semibold tracking-[0.2em] text-text-secondary uppercase">
-            연습 모드 · 무료 체험
-          </p>
-          <h1 className="text-2xl font-bold text-text leading-tight">
-            {selectedEvent.title}
-          </h1>
-        </div>
-
-        {/* 메인 그리드: 좌측(이미지) + 중앙(정보) + 우측(사이드바) */}
-        <div className="grid grid-cols-[280px_1fr_320px] gap-8 mt-6 items-start">
-
-          {/* ── 1. 좌측: 포스터 + 소셜 버튼 ── */}
-          <div className="flex flex-col gap-4">
-            {/* 포스터 */}
-            <div
-              className="relative w-full rounded-xl overflow-hidden"
-              style={{ aspectRatio: '3/4', background: selectedEvent.posterBg }}
-              aria-label="공연 포스터"
-            >
-              <Image
-                src={selectedEvent.posterImage}
-                alt={selectedEvent.title}
-                fill
-                className="object-cover"
-                sizes="280px"
-                priority
-              />
-              <div
-                className="absolute inset-x-0 bottom-0 h-2/3 z-10"
-                style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 20%, transparent)' }}
-              />
-              <div className="absolute inset-0 z-20 p-5 flex flex-col justify-between">
-                <p className="text-[9px] font-bold tracking-[0.3em] uppercase" style={{ color: selectedEvent.posterAccent }}>
-                  Ticket Rush · Practice
-                </p>
-                <div>
-                  <p className="text-white font-black text-base leading-tight drop-shadow">
-                    {selectedEvent.title.replace('[연습] ', '')}
-                  </p>
-                  <p className="text-white/50 text-xs mt-2">{selectedEvent.venueName}</p>
-                  <p className="text-white/30 text-[11px] mt-0.5">{selectedEvent.period}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 소셜 버튼 */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="btn btn-neutral btn-sm flex-1 gap-1.5"
-                aria-label="찜하기"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                </svg>
-                찜하기
-              </button>
-              <button
-                type="button"
-                className="btn btn-neutral btn-sm flex-1 gap-1.5"
-                aria-label="공유하기"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle cx="18" cy="5" r="3" />
-                  <circle cx="6" cy="12" r="3" />
-                  <circle cx="18" cy="19" r="3" />
-                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                </svg>
-                공유하기
-              </button>
-            </div>
-          </div>
-
-          {/* ── 2. 중앙: 공연 정보 테이블 ── */}
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-border">
-                {infoRows.map((row) => (
-                  <tr key={row.label}>
-                    <th
-                      scope="row"
-                      className="px-5 py-4 text-left align-top w-24 text-xs font-semibold text-text-secondary bg-bg-subtle whitespace-nowrap"
-                    >
-                      {row.label}
-                    </th>
-                    <td className="px-5 py-4 text-text leading-relaxed">
-                      {row.value}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* ── 3. 우측: sticky 사이드바 ── */}
-          <div className="sticky top-6 space-y-4">
-
-            {/* 캘린더 카드 */}
-            <div className="card p-4">
-              {/* 캘린더 헤더 */}
-              <div className="flex items-center justify-between mb-3">
-                <button
-                  type="button"
-                  className="w-6 h-6 flex items-center justify-center text-text-tertiary hover:text-text transition-colors rounded"
-                  aria-label="이전 달"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="m15 18-6-6 6-6" />
-                  </svg>
-                </button>
-                <span className="text-sm font-semibold text-text">2026.08</span>
-                <button
-                  type="button"
-                  className="w-6 h-6 flex items-center justify-center text-text-tertiary hover:text-text transition-colors rounded"
-                  aria-label="다음 달"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="m9 18 6-6-6-6" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* 관람일 레이블 */}
-              <p className="text-xs font-semibold text-text-secondary mb-2">관람일</p>
-
-              {/* 요일 헤더 */}
-              <div className="grid grid-cols-7 mb-1">
-                {WEEKDAY_LABELS.map((day, idx) => (
-                  <div
-                    key={day}
-                    className={[
-                      'text-center text-xs font-semibold py-1',
-                      idx === 0 ? 'text-red-500' : 'text-text-secondary',
-                    ].join(' ')}
-                  >
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              {/* 날짜 그리드 */}
-              <div className="space-y-0.5">
-                {calendarWeeks.map((week, wi) => (
-                  <div key={wi} className="grid grid-cols-7">
-                    {week.map((day, di) => {
-                      const isSelected = day === selectedDate;
-                      const isSunday = di === 0;
-                      const isSaturday = di === 6;
-                      const isWeekend = isSunday || isSaturday;
-                      const { startDay, endDay } = parseEventPeriod(selectedEvent.period);
-                      const inPeriod = day !== null && day >= startDay && day <= endDay;
-                      const isDisabled = !isWeekend || !inPeriod;
-                      return (
-                        <div key={di} className="flex items-center justify-center py-0.5">
-                          {day !== null ? (
-                            <button
-                              type="button"
-                              onClick={() => !isDisabled && setSelectedDate(day)}
-                              disabled={isDisabled}
-                              aria-label={`8월 ${day}일`}
-                              aria-pressed={isSelected}
-                              className={[
-                                'w-7 h-7 text-xs font-medium rounded-full transition-colors flex items-center justify-center',
-                                isDisabled
-                                  ? 'text-text-tertiary cursor-not-allowed opacity-30'
-                                  : isSelected
-                                  ? 'bg-blue-600 text-white font-semibold'
-                                  : isSunday
-                                  ? 'text-red-500 hover:bg-bg-subtle'
-                                  : 'text-text hover:bg-bg-subtle',
-                              ].join(' ')}
-                            >
-                              {day}
-                            </button>
-                          ) : (
-                            <span className="w-7 h-7" />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 회차 선택 카드 */}
-            <div className="card p-4 space-y-3">
-              <p className="text-xs font-semibold text-text-secondary">회차</p>
-              <div className="flex gap-2">
-                {selectedEvent.sessions.map((session, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setSelectedSession(idx)}
-                    aria-pressed={selectedSession === idx}
-                    className={[
-                      'btn btn-sm flex-1 transition-colors',
-                      selectedSession === idx
-                        ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'
-                        : 'btn-neutral',
-                    ].join(' ')}
-                  >
-                    {session.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* 좌석 현황 */}
-              <div className="pt-1 border-t border-border">
-                <p className="text-xs text-text-tertiary mb-1.5">좌석 현황</p>
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-secondary">
-                  {Object.entries(selectedEvent.venue.tiers).map(([tierId, tier], idx, arr) => (
-                    <span key={tierId} className="flex items-center gap-x-3">
-                      <span>
-                        {tier.label}{' '}
-                        <span className="font-semibold text-text">
-                          {countSelectableSeatsByTier(selectedEvent, tierId)}
-                        </span>
-                      </span>
-                      {idx < arr.length - 1 && (
-                        <span className="text-border-strong">|</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* 예매하기 + 시뮬레이션 버튼 */}
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={handleBooking}
-                disabled={bookingPending}
-                className="w-full py-3.5 rounded-lg bg-blue-700 hover:bg-blue-800 active:bg-blue-900 text-white text-sm font-bold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {bookingPending ? '진입 중...' : '예매하기'}
-              </button>
-              <button
-                type="button"
-                onClick={handleBooking}
-                disabled={bookingPending}
-                className="w-full py-3 rounded-lg border border-blue-700 text-blue-700 hover:bg-blue-50 text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {bookingPending ? '진입 중...' : 'BOOKING 시뮬레이션'}
-              </button>
-            </div>
-
-          </div>
-          {/* ── 우측 사이드바 끝 ── */}
-
-        </div>
-        {/* ── 메인 그리드 끝 ── */}
-
+      <TicketingDetailLayout
+        mode="practice"
+        title={selectedEvent.title}
+        venueName={selectedEvent.venueName}
+        posterImage={selectedEvent.posterImage}
+        posterColor={selectedEvent.posterBg}
+        infoRows={infoRows}
+        availableDates={availableDates}
+        sessions={layoutSessions}
+        selectedSessionId={String(selectedSession)}
+        onSelectSession={(id) => setSelectedSession(Number(id))}
+        canBook={!bookingPending}
+        pending={bookingPending}
+        onBook={handleBooking}
+        onBack={() => setSelectedEvent(null)}
+        backLabel="← 다른 이벤트 선택"
+        rules={[
+          '연습 모드는 무료로 실전과 동일한 티켓팅을 체험할 수 있습니다.',
+          '완료 시 소요 시간에 따라 랭킹 포인트가 적립됩니다.',
+          '새로고침 시 대기순서와 경과 시간은 유지되며 페널티가 부여됩니다.',
+        ]}
+      />
+      {/* 하단 선택된 날짜/좌석 요약 (연습 페이지 고유 헬퍼) */}
+      <div className="max-w-6xl mx-auto px-4 -mt-4 pb-6 text-xs text-text-tertiary">
+        선택 관람일: 8월 {String(selectedDate).padStart(2, '0')}일 · 현재 회차:{' '}
+        {selectedEvent.sessions[selectedSession].label}
       </div>
-    </div>
 
     {/* 대기 화면 오버레이 */}
     {showWaiting && selectedEvent && (

@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   getLiveCurrent,
   getLiveRound,
   startLiveSession,
   type LiveRoundPublic,
-  type LiveRoundStatus,
   type LiveSession,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -17,12 +15,16 @@ import { ApiError, validateNickname } from '@/lib/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { postGuest } from '@/lib/guests';
 import QueueOverlay from '@/components/live/QueueOverlay';
-import { getLiveEventByEventId, type LiveEvent } from '@/data/live';
+import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
 import BookingFlow from '@/components/booking/BookingFlow';
 import type { LiveConfirmResult } from '@/lib/live';
 import { getMyTickets, getTicket, type TicketDetail } from '@/lib/tickets';
 import TicketModal, { type TicketData } from '@/components/booking/TicketModal';
 import LiveResultCard from '@/components/live/LiveResultCard';
+import TicketingDetailLayout, {
+  type TicketingSession,
+} from '@/components/booking/TicketingDetailLayout';
+import { formatCountdown } from '@/lib/kst';
 
 /* ──────────────────────────────────────────
    /live/[roundId] — 회차 상세 + 예매하기 게이트
@@ -136,28 +138,16 @@ function clearResultSnapshot() {
   sessionStorage.removeItem(LIVE_RESULT_KEY);
 }
 
-function pad2(n: number): string {
-  return n.toString().padStart(2, '0');
-}
-
-function splitCountdown(ms: number): {
-  h: string;
-  m: string;
-  s: string;
-  done: boolean;
-} {
-  if (ms <= 0) return { h: '00', m: '00', s: '00', done: true };
-  const total = Math.floor(ms / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  return { h: pad2(h), m: pad2(m), s: pad2(s), done: false };
-}
-
 export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const { nowServer } = useServerTime();
-  const { user, guestNickname, setGuestNickname, syncGuestNickname } = useAuth();
+  const {
+    user,
+    isLoading: authLoading,
+    guestNickname,
+    setGuestNickname,
+    syncGuestNickname,
+  } = useAuth();
   const [, setTick] = useState(0);
 
   // ── 세션 상태 ─────────────────────────────
@@ -268,7 +258,13 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
 
   // sessionStorage 복구: 새로고침/이탈 후 재진입 시 큐 오버레이 or 결과 화면 자동 복원.
   // 결과 스냅샷 우선 — 이미 confirm 완료된 세션이라면 큐/좌석 화면으로 되돌리면 안 됨.
+  //
+  // NOTE: authLoading 중에는 user 판정이 확정되지 않아
+  //  - 로그인 유저인데 게스트 결과 카드가 노출되는 오분기,
+  //  - handleBook 이 게스트 경로로 튀어 닉네임 프롬프트 노출되는 오분기가 발생.
+  // 이를 막기 위해 authLoading 이 끝난 뒤에만 스냅샷을 복구한다.
   useEffect(() => {
+    if (authLoading) return;
     const numericRoundId = Number(roundId);
     if (!Number.isFinite(numericRoundId)) return;
 
@@ -302,7 +298,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     setActiveSessionId(snap.sessionId);
     setInitialSessionData(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roundId]);
+  }, [roundId, authLoading]);
 
   // 카운트다운 tick (500ms)
   useEffect(() => {
@@ -481,6 +477,10 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
 
   const handleBook = useCallback(() => {
     if (state.kind !== 'ready') return;
+    // auth 하이드레이션이 끝나기 전에는 로그인 여부가 확정되지 않아
+    // 로그인 유저인데 게스트 경로(닉네임 프롬프트)로 튈 위험이 있다.
+    // 확정 전까지는 클릭 자체를 무시한다 (버튼은 아래에서 disable 처리).
+    if (authLoading) return;
     setStartError(null);
     setNicknameError(null);
 
@@ -499,7 +499,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     // 게스트 최초 진입: 인라인 입력 UI 열기
     setNeedsNickname(true);
     setNicknameDraft('');
-  }, [state, user, guestNickname, performStart]);
+  }, [state, authLoading, user, guestNickname, performStart]);
 
   const handleNicknameSubmit = useCallback(() => {
     const trimmed = nicknameDraft.trim();
@@ -605,11 +605,13 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   }
 
   const { round } = state;
-  const event: LiveEvent | null = getLiveEventByEventId(round.eventId);
+  const event: LiveEvent | null = getLiveEventByVenueSlug(round.venueId);
   const roundTitle = event?.title ?? `실시간 회차 #${round.roundId}`;
 
   // 결과 화면(liveResult) 이 있으면 부킹/오버레이/히어로 모두 숨김. 결과가 최우선.
-  const showResult = liveResult !== null;
+  // 단, auth 하이드레이션 중에는 회원/게스트 분기 자체를 미룬다
+  // (게스트 결과 카드가 로그인 유저에게 노출되는 오분기 차단).
+  const showResult = liveResult !== null && !authLoading;
   // ready 승격 후 좌석 선택 화면 노출 여부.
   const showBookingFlow =
     !showResult &&
@@ -678,30 +680,171 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     }),
   };
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6">
-      <BackLink />
+  // ── 새 공용 레이아웃용 파생값 ─────────────────
+  const opensAtMs = Date.parse(round.opensAt);
+  const nowMs = nowServer();
+  const remainingToOpenMs = opensAtMs - nowMs;
+  const isClosedOrCancelled =
+    round.status === 'closed' || round.status === 'cancelled';
+  const alreadyParticipated = alreadyParticipatedTicketId !== null;
+  const isOpen = round.status === 'open' || nowMs >= opensAtMs;
 
+  const layoutCanBook =
+    !isClosedOrCancelled && !alreadyParticipated && isOpen && !authLoading;
+  const layoutDisabledReason: string | undefined = (() => {
+    if (isClosedOrCancelled) {
+      return round.status === 'cancelled' ? '취소된 회차' : '종료된 회차';
+    }
+    if (alreadyParticipated) return '이미 참여 완료한 회차';
+    if (!isOpen) return `오픈까지 ${formatCountdown(remainingToOpenMs)}`;
+    return undefined;
+  })();
+
+  const layoutSessions: TicketingSession[] = [
+    {
+      id: String(round.roundId),
+      label: opensAtDate.toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      opensAt: round.opensAt,
+      totalSeats: round.totalSeats,
+    },
+  ];
+
+  const layoutInfoRows: { label: string; value: React.ReactNode }[] = [
+    { label: '장소', value: event?.venueName ?? '실시간 회차' },
+    {
+      label: '오픈',
+      value: (
+        <span className="font-mono-tabular">
+          {new Date(opensAtMs).toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
+      ),
+    },
+    {
+      label: '종료',
+      value: (
+        <span className="font-mono-tabular">
+          {new Date(Date.parse(round.closesAt)).toLocaleString('ko-KR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
+      ),
+    },
+    {
+      label: '총 좌석',
+      value: (
+        <span className="font-mono-tabular">
+          {round.totalSeats.toLocaleString()}석
+        </span>
+      ),
+    },
+    { label: '회차 번호', value: `#${round.roundId}` },
+    {
+      label: '상태',
+      value: (() => {
+        switch (round.status) {
+          case 'open':
+            return <span className="badge badge-danger">진행 중</span>;
+          case 'scheduled':
+            return <span className="badge badge-neutral">오픈 예정</span>;
+          case 'closed':
+            return <span className="badge badge-neutral">종료</span>;
+          case 'cancelled':
+            return <span className="badge badge-danger">취소</span>;
+        }
+      })(),
+    },
+  ];
+
+  const alreadyParticipatedFootnote =
+    alreadyParticipated && alreadyParticipatedTicketId !== null ? (
+      <Link
+        href={`/my/tickets/${alreadyParticipatedTicketId}`}
+        className="text-primary font-semibold hover:underline"
+      >
+        내 티켓 보기 →
+      </Link>
+    ) : null;
+
+  return (
+    <div className="max-w-6xl mx-auto">
       {showHero && (
-        <RoundHero
-          round={round}
-          event={event}
-          nowServer={nowServer}
-          onBook={handleBook}
-          starting={starting}
-          startError={startError}
-          needsNickname={needsNickname}
-          nicknameDraft={nicknameDraft}
-          onNicknameChange={setNicknameDraft}
-          onNicknameSubmit={handleNicknameSubmit}
-          onNicknameCancel={() => {
-            setNeedsNickname(false);
-            setNicknameDraft('');
-            setNicknameError(null);
-          }}
-          nicknameError={nicknameError}
-          alreadyParticipatedTicketId={alreadyParticipatedTicketId}
-        />
+        <>
+          <TicketingDetailLayout
+            mode="live"
+            title={event?.title ?? `실시간 회차 #${round.roundId}`}
+            venueName={event?.venueName ?? ''}
+            category={event?.category}
+            posterImage={event?.posterImage}
+            posterInitial={event ? undefined : 'LIVE'}
+            posterColor={event ? undefined : '#0B1220'}
+            infoRows={layoutInfoRows}
+            sessions={layoutSessions}
+            selectedSessionId={String(round.roundId)}
+            canBook={layoutCanBook}
+            disabledReason={layoutDisabledReason}
+            pending={starting}
+            onBook={handleBook}
+            backHref="/live"
+            backLabel="← 실시간 이벤트 목록"
+            ctaFootnote={
+              alreadyParticipatedFootnote ?? (
+                <>
+                  게스트도 참여 가능 · 티켓 지급은{' '}
+                  <strong className="text-text-secondary">회원 전용</strong>
+                </>
+              )
+            }
+            rules={[
+              '회차 오픈 시각에 맞춰 대기실이 자동 개방됩니다.',
+              '진행 중 새로고침 시 대기순서가 초기화됩니다.',
+              '성공한 사람 중 소요 시간 TOP 10 회원에게 티켓 1매가 지급됩니다.',
+              '게스트는 참여 가능하지만 티켓 지급 대상은 회원 전용입니다.',
+            ]}
+          />
+
+          {/* 오류/게스트 닉네임 프롬프트 (레이아웃 아래에 별도 카드로) */}
+          {(startError || needsNickname) && (
+            <div className="max-w-6xl mx-auto px-4 pb-8 space-y-3">
+              {startError && (
+                <div
+                  role="alert"
+                  className="max-w-md mx-auto text-sm text-danger-text bg-danger-bg border border-danger-border rounded-lg px-4 py-3"
+                >
+                  {startError.message}
+                </div>
+              )}
+              {needsNickname && (
+                <div className="max-w-md mx-auto">
+                  <NicknamePrompt
+                    value={nicknameDraft}
+                    onChange={setNicknameDraft}
+                    onSubmit={handleNicknameSubmit}
+                    onCancel={() => {
+                      setNeedsNickname(false);
+                      setNicknameDraft('');
+                      setNicknameError(null);
+                    }}
+                    error={nicknameError}
+                    pending={starting}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {showBookingFlow && enteredSessionId && (
@@ -819,354 +962,6 @@ function BackLink() {
     <Link href="/live" className="btn btn-neutral btn-sm inline-flex">
       ← 실시간 이벤트 목록
     </Link>
-  );
-}
-
-interface RoundHeroProps {
-  round: LiveRoundPublic;
-  event: LiveEvent | null;
-  nowServer: () => number;
-  onBook: () => void;
-  starting: boolean;
-  startError: ApiError | Error | null;
-  needsNickname: boolean;
-  nicknameDraft: string;
-  onNicknameChange: (v: string) => void;
-  onNicknameSubmit: () => void;
-  onNicknameCancel: () => void;
-  nicknameError: string | null;
-  alreadyParticipatedTicketId: number | null;
-}
-
-function RoundHero({
-  round,
-  event,
-  nowServer,
-  onBook,
-  starting,
-  startError,
-  needsNickname,
-  nicknameDraft,
-  onNicknameChange,
-  onNicknameSubmit,
-  onNicknameCancel,
-  nicknameError,
-  alreadyParticipatedTicketId,
-}: RoundHeroProps) {
-  const title = event?.title ?? `실시간 회차 #${round.roundId}`;
-  const venueName = event?.venueName ?? '';
-  const category = event?.category ?? '실시간';
-  const poster = event?.posterImage;
-
-  const opensAtMs = Date.parse(round.opensAt);
-  const opensAtLabel = new Date(opensAtMs).toLocaleString('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  return (
-    <section className="grid md:grid-cols-[minmax(0,1fr)_16rem] lg:grid-cols-[minmax(0,1fr)_18rem] gap-6 items-start">
-      {/* 좌: 정보 카드 */}
-      <div className="card p-6 sm:p-8 flex flex-col gap-5 min-w-0">
-        <StatusBadgeRow status={round.status} opensAtLabel={opensAtLabel} />
-
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold text-primary tracking-wide">
-            {category}
-          </p>
-          <h1 className="text-2xl sm:text-[28px] font-bold text-text leading-tight">
-            {title}
-          </h1>
-          {venueName && (
-            <p className="text-sm text-text-secondary">{venueName}</p>
-          )}
-        </div>
-
-        <StatusPanel round={round} nowServer={nowServer} />
-
-        <div className="flex items-center justify-between text-xs text-text-secondary">
-          <span>
-            총 좌석{' '}
-            <strong className="text-text font-mono-tabular">
-              {round.totalSeats.toLocaleString()}
-            </strong>
-            석
-          </span>
-          <span>회차 #{round.roundId}</span>
-        </div>
-
-        {startError && (
-          <div
-            role="alert"
-            className="text-sm text-danger-text bg-danger-bg border border-danger-border rounded-lg px-4 py-3"
-          >
-            {startError.message}
-          </div>
-        )}
-
-        {needsNickname ? (
-          <NicknamePrompt
-            value={nicknameDraft}
-            onChange={onNicknameChange}
-            onSubmit={onNicknameSubmit}
-            onCancel={onNicknameCancel}
-            error={nicknameError}
-            pending={starting}
-          />
-        ) : (
-          <ActionArea
-            round={round}
-            nowServer={nowServer}
-            onClick={onBook}
-            pending={starting}
-            alreadyParticipatedTicketId={alreadyParticipatedTicketId}
-          />
-        )}
-
-        <p className="text-[11px] text-text-tertiary">
-          게스트도 참여 가능하지만, 티켓 지급은{' '}
-          <strong className="text-text-secondary">회원</strong>만 대상입니다.
-        </p>
-      </div>
-
-      {/* 우: 포스터 카드 */}
-      <div
-        className="hidden md:block relative w-full rounded-xl overflow-hidden aspect-[3/4] bg-[#0b1220]"
-        aria-label="공연 포스터"
-      >
-        {poster && (
-          <Image
-            src={poster}
-            alt={title}
-            fill
-            sizes="(min-width: 1024px) 18rem, 16rem"
-            className="object-cover"
-            priority
-          />
-        )}
-        <div
-          className="absolute inset-x-0 bottom-0 h-2/3 z-10 pointer-events-none"
-          style={{
-            background:
-              'linear-gradient(to top, rgba(0,0,0,0.85) 20%, transparent)',
-          }}
-        />
-        <div className="absolute inset-0 z-20 p-5 flex flex-col justify-between">
-          <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/70">
-            Ticket Rush · Live
-          </p>
-          <div>
-            <p className="text-white font-black text-base leading-tight drop-shadow line-clamp-2">
-              {title}
-            </p>
-            {venueName && (
-              <p className="text-white/50 text-xs mt-2 truncate">{venueName}</p>
-            )}
-            <p className="text-white/30 text-[11px] mt-0.5 font-mono-tabular">
-              {statusPosterLabel(round.status, opensAtLabel)}
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function statusPosterLabel(status: LiveRoundStatus, opensAtLabel: string): string {
-  switch (status) {
-    case 'open':
-      return '진행 중';
-    case 'closed':
-      return '종료됨';
-    case 'cancelled':
-      return '취소됨';
-    case 'scheduled':
-    default:
-      return `오픈 ${opensAtLabel}`;
-  }
-}
-
-function StatusBadgeRow({
-  status,
-  opensAtLabel,
-}: {
-  status: LiveRoundStatus;
-  opensAtLabel: string;
-}) {
-  if (status === 'open') {
-    return (
-      <div className="flex items-center gap-2.5">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger-bg border border-danger-border">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger-text opacity-60" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-danger-text" />
-          </span>
-          <span className="text-[11px] font-bold text-danger-text tracking-wider">
-            진행 중
-          </span>
-        </span>
-        <span className="text-xs text-text-secondary">지금 티켓팅 가능</span>
-      </div>
-    );
-  }
-
-  if (status === 'scheduled') {
-    return (
-      <div className="flex items-center gap-2.5">
-        <span className="badge badge-neutral">오픈 예정</span>
-        <span className="text-xs text-text-secondary">오픈 {opensAtLabel}</span>
-      </div>
-    );
-  }
-
-  if (status === 'closed') {
-    return (
-      <div className="flex items-center gap-2.5">
-        <span className="badge badge-neutral">종료됨</span>
-      </div>
-    );
-  }
-
-  // cancelled
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="badge badge-danger">취소됨</span>
-    </div>
-  );
-}
-
-function StatusPanel({
-  round,
-  nowServer,
-}: {
-  round: LiveRoundPublic;
-  nowServer: () => number;
-}) {
-  if (round.status === 'open') {
-    return (
-      <div className="rounded-xl border border-danger-border bg-danger-bg p-4 text-center">
-        <p className="text-sm font-semibold text-danger-text">
-          지금 티켓팅 가능
-        </p>
-        <p className="text-xs text-text-secondary mt-1">
-          아래 [예매하기] 버튼을 눌러 대기실에 입장하세요.
-        </p>
-      </div>
-    );
-  }
-
-  if (round.status === 'scheduled') {
-    const opensAtMs = Date.parse(round.opensAt);
-    const remaining = opensAtMs - nowServer();
-    const cd = splitCountdown(remaining);
-    return (
-      <div className="rounded-xl border border-border bg-bg-subtle p-4 flex items-end gap-1 justify-center">
-        {[
-          { val: cd.h, unit: '시간' },
-          { val: cd.m, unit: '분' },
-          { val: cd.s, unit: '초' },
-        ].map(({ val, unit }, i) => (
-          <div key={unit} className="flex items-end gap-1">
-            {i > 0 && (
-              <span className="text-2xl font-light text-text-tertiary mb-1">
-                :
-              </span>
-            )}
-            <div className="text-center min-w-[3rem]">
-              <span className="font-mono-tabular text-4xl font-bold text-text">
-                {val}
-              </span>
-              <p className="text-xs text-text-tertiary mt-0.5">{unit}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (round.status === 'closed') {
-    return (
-      <div className="rounded-xl border border-border bg-bg-subtle p-4 text-center">
-        <p className="text-sm font-semibold text-text">
-          이 회차는 종료되었습니다.
-        </p>
-        <p className="text-xs text-text-secondary mt-1">
-          다른 예정 회차를 확인해 보세요.
-        </p>
-      </div>
-    );
-  }
-
-  // cancelled
-  return (
-    <div className="rounded-xl border border-danger-border bg-danger-bg p-4 text-center">
-      <p className="text-sm font-semibold text-danger-text">
-        이 회차는 관리자에 의해 취소되었습니다.
-      </p>
-      <p className="text-xs text-text-secondary mt-1">
-        다른 예정 회차로 이동해 주세요.
-      </p>
-    </div>
-  );
-}
-
-function ActionArea({
-  round,
-  nowServer,
-  onClick,
-  pending,
-  alreadyParticipatedTicketId,
-}: {
-  round: LiveRoundPublic;
-  nowServer: () => number;
-  onClick: () => void;
-  pending: boolean;
-  alreadyParticipatedTicketId: number | null;
-}) {
-  if (round.status === 'closed' || round.status === 'cancelled') {
-    return (
-      <Link href="/live" className="btn btn-outline btn-lg w-full sm:w-auto">
-        다른 회차 보기
-      </Link>
-    );
-  }
-
-  // 회원이 이미 이 회차에서 티켓을 받은 경우: [예매하기] 대신 참여 완료 배지 + 티켓 이동.
-  if (alreadyParticipatedTicketId !== null) {
-    return (
-      <div className="flex flex-col gap-2 w-full sm:w-auto">
-        <div className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 rounded-full bg-success-bg border border-success-border">
-          <span className="text-xs font-bold text-success-text">참여 완료</span>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link
-            href={`/my/tickets/${alreadyParticipatedTicketId}`}
-            className="btn btn-solid btn-lg"
-          >
-            내 티켓 보기
-          </Link>
-          <Link href="/live" className="btn btn-outline btn-lg">
-            다른 회차 보기
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  const opensAtMs = Date.parse(round.opensAt);
-  const enabled = round.status === 'open' || nowServer() >= opensAtMs;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!enabled || pending}
-      className="btn btn-solid btn-lg w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {pending ? '대기실 입장 중…' : '예매하기'}
-    </button>
   );
 }
 

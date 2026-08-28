@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { apiFetch, ROUTES } from "@/lib/api";
+import { apiFetch, refreshWithLock, ROUTES } from "@/lib/api";
 import { deleteGuestMe, getGuestMe, postGuest } from "@/lib/guests";
 import {
   NICKNAME_CHANGE_COOLDOWN_MS,
@@ -112,12 +112,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (!ok && meRes.status === 401) {
             // refresh 1회 시도. 성공 시 users/me 재요청.
-            const refreshRes = await fetch(ROUTES.auth.refresh, {
-              method: 'POST',
-              credentials: 'include',
-              headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            }).catch(() => null);
-            if (refreshRes && refreshRes.ok) {
+            // apiFetch 인터셉터와 동일한 single-flight + navigator.locks 락을 재사용해
+            // 부팅 시 여러 탭이 동시에 새 refresh 를 다투는 케이스를 방어한다.
+            const refreshed = await refreshWithLock();
+            if (refreshed) {
               const retryRes = await fetch(ROUTES.users.me, {
                 method: 'GET',
                 credentials: 'include',

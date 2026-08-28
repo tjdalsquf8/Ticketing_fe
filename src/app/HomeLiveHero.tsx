@@ -9,12 +9,12 @@ import {
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
-import { getLiveEventByEventId, type LiveEvent } from '@/data/live';
+import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
 
 /* ──────────────────────────────────────────
    홈 hero — 진행 중 회차 우선, 없으면 다음 예정
    ─ 좌: 이벤트 정보 + CTA
-   ─ 우: 포스터 (eventId 매핑 실패 시 fallback)
+   ─ 우: 포스터 (venueId slug 매핑 실패 시 fallback)
    ────────────────────────────────────────── */
 
 function pad2(n: number): string {
@@ -51,7 +51,7 @@ export default function HomeLiveHero() {
   const round = current ?? next;
   if (!round) return <EmptyHero />;
 
-  const event: LiveEvent | null = getLiveEventByEventId(round.eventId);
+  const event: LiveEvent | null = getLiveEventByVenueSlug(round.venueId);
   const isOpen = current?.roundId === round.roundId;
   const opensAtMs = Date.parse(round.opensAt);
   const remainingMs = Math.max(0, opensAtMs - nowServer());
@@ -172,13 +172,17 @@ export default function HomeLiveHero() {
 
 function EmptyHero() {
   return (
-    <section className="card p-8 text-center space-y-2">
-      <h2 className="text-lg font-bold text-text">진행 중이거나 예정된 회차가 없습니다</h2>
-      <p className="text-sm text-text-secondary">
-        새 회차가 오픈되면 여기서 확인할 수 있습니다.
-      </p>
-      <Link href="/live" className="btn btn-outline mt-3 inline-flex">
-        실시간 이벤트 페이지 이동
+    <section className="card px-5 py-4 flex flex-wrap items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-text">
+          진행 중이거나 예정된 회차가 없어요
+        </p>
+        <p className="text-xs text-text-secondary mt-0.5">
+          새 회차가 오픈되면 여기에 표시됩니다.
+        </p>
+      </div>
+      <Link href="/live" className="btn btn-outline btn-sm shrink-0">
+        실시간 페이지로
       </Link>
     </section>
   );

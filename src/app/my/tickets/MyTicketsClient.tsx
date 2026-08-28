@@ -4,7 +4,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { getMyTickets, type TicketListItem, type TicketListMeta } from '@/lib/tickets';
-import { getLiveEventByEventId } from '@/data/live';
 import { getEvent, type EventDetail } from '@/lib/events';
 import { getAdminVenueOption } from '@/data/live';
 import { safeImageUrl } from '@/lib/safe';
@@ -178,12 +177,12 @@ export default function MyTicketsClient() {
         badgeLabel: '유료 이벤트',
       };
     }
-    // 라이브 티켓 — 기존 카탈로그 조회 유지
-    const live = ticket.eventId != null ? getLiveEventByEventId(ticket.eventId) : null;
+    // 라이브 티켓 — public 라이브 응답에 venueId(slug) 가 실려있지 않으므로
+    // 티켓 메타만으로는 공연장 카탈로그 조회 불가. 제네릭 폴백 라벨만 노출한다.
     return {
-      title: live?.title ?? '실시간 회차',
-      venueName: live?.venueName ?? '—',
-      poster: safeImageUrl(live?.posterImage),
+      title: '실시간 회차',
+      venueName: '—',
+      poster: undefined,
       badgeLabel: '실시간',
     };
   };

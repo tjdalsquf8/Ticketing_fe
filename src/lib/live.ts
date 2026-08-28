@@ -6,12 +6,21 @@ export type LiveRoundStatus = "scheduled" | "open" | "closed" | "cancelled";
 export type LiveSeatStatus = "available" | "held" | "sold";
 export type LiveSessionStatus = "queued" | "active" | "completed";
 
-/** GET /api/live/current · /api/live/next 공통 페이로드. */
+/**
+ * GET /api/live/current · /api/live/next · /api/live/rounds/:roundId · /api/live/last-round 공통 페이로드.
+ *
+ * BE 리팩터로 이벤트 참조가 제거되고 공연장 기반으로 바뀌었다.
+ * - 기존 `eventId: number` 제거
+ * - 신규 `venueId: string` (venues.slug 문자열) — FE 는 이 값으로 LIVE_EVENTS 카탈로그를 룩업한다
+ *
+ * 주의: admin `LiveConfig.defaultVenueId` 는 **정수 PK**, 여기 `venueId` 는 **slug 문자열**.
+ * 이름은 같아도 타입이 다르므로 자료구조 오해 주의 (BE 팀 공지).
+ */
 export interface LiveRoundSummary {
   roundId: number;
   opensAt: string;
   closesAt: string;
-  eventId: number;
+  venueId: string;
   status: LiveRoundStatus;
   totalSeats: number;
 }
@@ -127,10 +136,75 @@ export function holdSeat(sessionId: string, seatLabel: string) {
   });
 }
 
-/** 좌석 확정. clientElapsedMs 없음 (서버 계산). 회원 TOP10 만 ticketId 발급. */
-export function confirmSeat(sessionId: string, seatLabel: string) {
-  return apiFetch<LiveConfirmResult>(ROUTES.live.session(sessionId).confirm, {
-    method: "POST",
-    body: { seatLabel },
-  });
+/**
+ * 좌석 확정. clientElapsedMs 없음 (서버 계산). 회원 TOP10 만 ticketId 발급.
+ *
+ * 방어적 정규화:
+ *   백엔드가 camelCase 계약을 지키지 못하고 snake_case (`ticket_id`, `rank_number`,
+ *   `elapsed_ms`) 로 응답하는 경우에도 프론트가 오분기(회원-missed)로 빠지지 않도록
+ *   응답 원본을 관대한 매핑으로 흡수해 통일된 `LiveConfirmResult`로 반환한다.
+ *   필드가 실제로 없으면 그대로 null / 0 을 유지 → 백엔드 계약 위반은 그때만 드러난다.
+ */
+export async function confirmSeat(
+  sessionId: string,
+  seatLabel: string,
+): Promise<LiveConfirmResult> {
+  const raw = await apiFetch<Record<string, unknown>>(
+    ROUTES.live.session(sessionId).confirm,
+    { method: "POST", body: { seatLabel } },
+  );
+
+  const pickNumber = (...vals: unknown[]): number | null => {
+    for (const v of vals) {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) {
+        return Number(v);
+      }
+    }
+    return null;
+  };
+
+  const rankNumber =
+    pickNumber(
+      (raw as Record<string, unknown>)?.rankNumber,
+      (raw as Record<string, unknown>)?.rank_number,
+      (raw as Record<string, unknown>)?.rank,
+    ) ?? 0;
+
+  const elapsedMs =
+    pickNumber(
+      (raw as Record<string, unknown>)?.elapsedMs,
+      (raw as Record<string, unknown>)?.elapsed_ms,
+      (raw as Record<string, unknown>)?.elapsed,
+    ) ?? 0;
+
+  const ticketId = pickNumber(
+    (raw as Record<string, unknown>)?.ticketId,
+    (raw as Record<string, unknown>)?.ticket_id,
+    (raw as Record<string, unknown>)?.ticketID,
+  );
+
+  const normalized: LiveConfirmResult = { rankNumber, elapsedMs, ticketId };
+
+  if (process.env.NODE_ENV !== "production" && typeof console !== "undefined") {
+    const rawKeys =
+      raw && typeof raw === "object" ? Object.keys(raw as object) : [];
+    console.log(
+      "[live] confirmSeat raw response →",
+      raw,
+      "keys:",
+      rawKeys,
+      "normalized:",
+      normalized,
+    );
+    if (ticketId === null && rankNumber > 0 && rankNumber <= 10) {
+      console.warn(
+        "[live] confirmSeat: rank<=10 인데 ticketId 없음. " +
+          "회원 계정으로 호출했다면 백엔드 계약(rank<=10 → ticketId 발급) 위반 의심. raw =",
+        raw,
+      );
+    }
+  }
+
+  return normalized;
 }

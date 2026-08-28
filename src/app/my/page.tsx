@@ -4,6 +4,11 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch, ROUTES } from '@/lib/api';
 import { getMyTickets } from '@/lib/tickets';
+import {
+  listMyEventRegistrations,
+  type MyEventRegistration,
+} from '@/lib/events';
+import { formatKstDateTime } from '@/lib/kst';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface UserProfile {
@@ -16,6 +21,16 @@ interface UserProfile {
 // 리더보드 순위는 아직 백엔드 API 미구현.
 const LEADERBOARD_RANK: number | null = null;
 
+const REG_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+  pending: { text: '신청 완료', cls: 'badge-info' },
+  entered: { text: '참여함', cls: 'badge-primary' },
+  ticketed: { text: '티켓 발급 완료', cls: 'badge-success' },
+  missed: { text: '미참여', cls: 'badge-neutral' },
+  no_show: { text: '참여 실패', cls: 'badge-neutral' },
+  cancelled: { text: '취소됨', cls: 'badge-neutral' },
+  refunded: { text: '환불됨', cls: 'badge-neutral' },
+};
+
 export default function MyPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -25,6 +40,7 @@ export default function MyPage() {
   // 누적 티켓 수는 GET /api/tickets/me 응답의 meta.totalCount 로 확인.
   // size=1 로 페이로드 최소화 (실제 티켓 목록은 /my/tickets 에서 별도 조회).
   const [ticketCount, setTicketCount] = useState<number | null>(null);
+  const [registrations, setRegistrations] = useState<MyEventRegistration[] | null>(null);
 
   useEffect(() => {
     apiFetch<UserProfile>(ROUTES.users.me)
@@ -42,6 +58,22 @@ export default function MyPage() {
       })
       .catch(() => {
         // 미로그인·네트워크 실패 등 조용히 무시. 티켓 수는 "—" 로 표시.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    listMyEventRegistrations({ limit: 10 })
+      .then(({ data }) => {
+        if (!alive) return;
+        setRegistrations(data);
+      })
+      .catch(() => {
+        // 미로그인 등 조용히 무시. 빈 목록으로 표시.
+        if (alive) setRegistrations([]);
       });
     return () => {
       alive = false;
@@ -73,8 +105,8 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 통계 스탯 — 누적 티켓 / 리더보드 순위 */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* 통계 스탯 — 누적 티켓 / 포인트 / 리더보드 순위 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <Link
             href="/my/tickets"
             className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
@@ -88,6 +120,27 @@ export default function MyPage() {
                 {ticketCount ?? '—'}
               </strong>
               <span className="text-sm text-text-tertiary ml-1">매</span>
+            </p>
+          </Link>
+          <Link
+            href="/my/points"
+            className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
+          >
+            <p className="text-xs text-text-secondary flex items-center justify-between">
+              <span>보유 포인트</span>
+              <span className="text-primary text-sm leading-none">›</span>
+            </p>
+            <p className="mt-1 font-mono-tabular">
+              {typeof user?.points === 'number' ? (
+                <>
+                  <strong className="text-2xl text-text">
+                    {user.points.toLocaleString()}
+                  </strong>
+                  <span className="text-sm text-text-tertiary ml-1">P</span>
+                </>
+              ) : (
+                <span className="text-sm text-text-tertiary">—</span>
+              )}
             </p>
           </Link>
           <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
@@ -117,25 +170,61 @@ export default function MyPage() {
         )}
       </div>
 
-      {/* 참여 이력 */}
+      {/* 이벤트 신청 이력 */}
       <section>
-        <h2 className="text-sm font-semibold text-text mb-3">참여 이력</h2>
+        <h2 className="text-sm font-semibold text-text mb-3">이벤트 신청 이력</h2>
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">날짜</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">오픈</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">결과</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">참여비</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
-                  참여 이력이 없습니다.
-                </td>
-              </tr>
+              {registrations === null ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
+                    불러오는 중…
+                  </td>
+                </tr>
+              ) : registrations.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
+                    신청한 이벤트가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                registrations.map((r) => {
+                  const st = REG_STATUS_LABEL[r.status] ?? {
+                    text: r.status,
+                    cls: 'badge-neutral',
+                  };
+                  return (
+                    <tr key={r.registrationId} className="hover:bg-bg-subtle transition-colors">
+                      <td className="px-4 py-3 text-xs text-text-secondary font-mono-tabular whitespace-nowrap">
+                        {formatKstDateTime(r.event.opensAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/event/${r.eventId}`}
+                          className="font-medium text-text hover:text-primary transition-colors"
+                        >
+                          {r.event.title}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono-tabular text-text-secondary">
+                        {r.pointsPaid.toLocaleString()}P
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className={`badge ${st.cls}`}>{st.text}</span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
