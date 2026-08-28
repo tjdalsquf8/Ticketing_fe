@@ -98,6 +98,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_SEAT_LABEL: "좌석 라벨 형식이 올바르지 않습니다.",
   SEAT_ALREADY_HELD: "다른 사용자가 이미 선점 중인 좌석입니다.",
   SEAT_ALREADY_CONFIRMED: "이미 확정된 좌석입니다.",
+  // 기프티콘 도메인
+  GIFTICON_NOT_FOUND: "해당 재고를 찾을 수 없습니다.",
+  GIFTICON_CODE_DUPLICATE: "이미 등록된 바코드 번호입니다.",
+  GIFTICON_NOT_EDITABLE: "지급·사용된 재고는 수정할 수 없습니다.",
+  GIFTICON_NOT_DELETABLE: "지급·사용된 재고는 삭제할 수 없습니다.",
   // 이벤트 rate limit — BE 스펙:
   //   TOO_MANY_EVENT_REQUESTS (공개 조회, IP 1분 60)
   //   TOO_MANY_EVENT_ACTIONS (신청/취소/세션시작, 유저 1분 10)

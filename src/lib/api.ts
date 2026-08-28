@@ -69,6 +69,9 @@ export const ROUTES = {
     liveCronRun: `${BASE_URL}/admin/live/cron/run`,
     eventStats: (eventId: number | string) =>
       `${BASE_URL}/admin/events/${eventId}/stats`,
+    gifticons: `${BASE_URL}/admin/gifticons`,
+    gifticonsSummary: `${BASE_URL}/admin/gifticons/summary`,
+    gifticonDetail: (id: number | string) => `${BASE_URL}/admin/gifticons/${id}`,
   },
 };
 
