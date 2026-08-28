@@ -208,8 +208,8 @@ export default function AdminEventsClient() {
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">오픈</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">상태</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">신청</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">액션</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">신청</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">액션</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -252,11 +252,11 @@ export default function AdminEventsClient() {
                     <td className="px-4 py-3">
                       <span className={`badge ${st.cls}`}>{st.text}</span>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono-tabular text-text">
+                    <td className="px-4 py-3 text-left font-mono-tabular text-text">
                       {ev.registeredCount}
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="inline-flex gap-1.5">
+                    <td className="px-4 py-3 text-left whitespace-nowrap">
+                      <div className="inline-flex gap-1.5 -ml-3">
                         <Link
                           href={`/admin/events/${ev.eventId}/edit`}
                           className="btn btn-ghost btn-sm"

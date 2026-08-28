@@ -255,41 +255,37 @@ export default function AdminLiveClient() {
       {/* 리스트 */}
       {/*
         컬럼 폭 고정 전략:
-        - table-fixed + <colgroup> 으로 셀 콘텐츠와 무관하게 x좌표 잠금
-        - 이벤트 컬럼(width:auto)만 잔여 폭 흡수 → 다른 컬럼은 절대 흔들리지 않음
-        - 최소 폭 합계(≈632px)를 밑도는 뷰포트에선 overflow-x-auto 로 가로 스크롤
+        - table-fixed + <colgroup> 퍼센트 폭으로 테이블 전체를 항상 꽉 채움(빈 여백 없음)
+        - 모든 컬럼 좌측 정렬 통일, 액션 버튼 그룹은 -ml-3로 버튼 내부 패딩만큼 당겨
+          헤더 텍스트와 시작 x좌표를 맞춤
+        - 최소 폭(min-w-[780px])을 밑도는 뷰포트에선 overflow-x-auto 로 가로 스크롤
       */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[780px] text-sm table-fixed">
             <colgroup>
-              <col style={{ width: '210px' }} />
-              <col style={{ width: '72px' }} />
-              <col />
-              <col style={{ width: '96px' }} />
-              <col style={{ width: '80px' }} />
-              <col style={{ width: '72px' }} />
-              <col style={{ width: '72px' }} />
+              <col style={{ width: '30%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '28%' }} />
             </colgroup>
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">시각</th>
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">회차</th>
                 <th className="text-left  px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">상태</th>
-                {/* 참여·액션은 center 정렬(헤더·데이터 동일) → 세로 일직선 (헤더 텍스트 폭과 데이터 폭이 달라도 중심 x좌표 일치). */}
-                <th className="text-center px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">참여</th>
-                {/* 중지 컬럼은 별도 <th>로 자리만 확보하고 라벨 생략 → 상세 x좌표 절대 흔들리지 않음. */}
-                <th className="px-2 py-3 whitespace-nowrap" aria-hidden />
-                <th className="text-center pl-2 pr-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">액션</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">참여</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">액션</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {error ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-danger-text">{error}</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-danger-text">{error}</td></tr>
               ) : loading && !rounds ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td></tr>
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td></tr>
               ) : filtered && filtered.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-text-secondary">
+                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-text-secondary">
                   {rounds && rounds.length === 0 ? '해당 일자에 회차가 없습니다.' : '이 상태의 회차가 없습니다.'}
                 </td></tr>
               ) : (
@@ -307,29 +303,27 @@ export default function AdminLiveClient() {
                       </td>
                       <td className="px-4 py-3 font-mono-tabular text-xs text-text-tertiary truncate">#{r.id}</td>
                       <td className="px-4 py-3 truncate"><span className={`badge ${st.cls}`}>{st.text}</span></td>
-                      <td className="px-4 py-3 text-center font-mono-tabular text-text truncate">{r.participantCount}</td>
-                      {/* 중지 컬럼(별도 <td>) — table col width가 모든 행에서 동일해 vertical align 보장. */}
-                      <td className="px-2 py-3 text-center whitespace-nowrap">
-                        {cancelable ? (
+                      <td className="px-4 py-3 text-left font-mono-tabular text-text truncate">{r.participantCount}</td>
+                      <td className="px-4 py-3 text-left whitespace-nowrap">
+                        <div className="inline-flex gap-1.5 -ml-3">
                           <button
                             type="button"
-                            className="btn btn-ghost btn-sm text-danger-text"
-                            onClick={() => requestCancel(r)}
-                            disabled={busy}
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setDetailFor(r.id)}
                           >
-                            중지
+                            상세
                           </button>
-                        ) : null}
-                      </td>
-                      {/* 상세 컬럼 — 항상 렌더, 헤더 '액션' 바로 아래에 위치. */}
-                      <td className="pl-2 pr-4 py-3 text-center whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => setDetailFor(r.id)}
-                        >
-                          상세
-                        </button>
+                          {cancelable && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm text-danger-text"
+                              onClick={() => requestCancel(r)}
+                              disabled={busy}
+                            >
+                              중지
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
