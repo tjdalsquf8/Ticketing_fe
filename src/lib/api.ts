@@ -89,6 +89,61 @@ function forceLogout() {
 }
 
 /**
+ * refresh 요청 경합 방어.
+ *
+ * 배경: BE 가 refresh 로테이션을 적용해서 성공 응답이 새 refreshToken 을 함께 심고
+ * 이전 refresh 는 즉시 무효화된다. 따라서 같은 시각에 refresh 를 두 번 던지면
+ * 두 번째 요청은 이미 무효화된 이전 refresh 를 쓰다가 401 로 죽고 → forceLogout 유발.
+ *
+ * 두 층 방어:
+ *   1) 같은 탭 안 single-flight: 여러 API 가 병렬로 401 을 받아도 refresh 는 한 번만
+ *      실제 fetch 로 나가고, 나머지 요청은 그 promise 결과를 공유한다.
+ *   2) 여러 탭 간 배타 실행: navigator.locks 로 'auth-refresh' 이름 락을 잡는다.
+ *      락을 가진 탭이 refresh 를 던지고 성공하면 새 쿠키가 브라우저 전역에 심어지므로
+ *      다음 탭이 락을 얻는 시점에는 refresh 없이 그대로 원본 요청을 재시도해도 통과.
+ *      단, 이 모듈은 성공 여부만 반환해 각 탭이 자기 원본 요청을 재시도한다.
+ *      navigator.locks 미지원(Safari <15.4 등) 브라우저는 1단만 동작.
+ */
+let refreshingPromise: Promise<boolean> | null = null;
+
+async function performRefreshRequest(): Promise<boolean> {
+  try {
+    const refreshRes = await fetch(ROUTES.auth.refresh, {
+      method: "POST",
+      credentials: "include",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+    return refreshRes.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function refreshWithLock(): Promise<boolean> {
+  if (refreshingPromise) return refreshingPromise;
+
+  const run = async (): Promise<boolean> => {
+    if (
+      typeof navigator !== "undefined" &&
+      "locks" in navigator &&
+      navigator.locks?.request
+    ) {
+      return navigator.locks.request(
+        "auth-refresh",
+        { mode: "exclusive" },
+        performRefreshRequest,
+      );
+    }
+    return performRefreshRequest();
+  };
+
+  refreshingPromise = run().finally(() => {
+    refreshingPromise = null;
+  });
+  return refreshingPromise;
+}
+
+/**
  * 백엔드 공통 응답 스키마
  *   성공: { success: true,  data:  T, meta?: M }
  *   실패: { success: false, error: { code, message } }
@@ -178,16 +233,10 @@ async function fetchEnvelope<T, M = unknown>(
     code === 'AUTH_INVALID_TOKEN' || code === 'AUTH_TOKEN_MISSING';
 
   if (res.status === 401 && !_retry && typeof window !== "undefined" && isSessionAuthError) {
-    try {
-      const refreshRes = await fetch(ROUTES.auth.refresh, {
-        method: "POST",
-        credentials: "include",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-      });
-      if (refreshRes.ok) {
-        return fetchEnvelope<T, M>(url, { method, body, headers: extraHeaders, ...rest }, true);
-      }
-    } catch {}
+    const refreshed = await refreshWithLock();
+    if (refreshed) {
+      return fetchEnvelope<T, M>(url, { method, body, headers: extraHeaders, ...rest }, true);
+    }
     forceLogout();
     throw new ApiError(
       getErrorMessage(code, '세션이 만료되었습니다. 다시 로그인해 주세요.'),
