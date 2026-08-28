@@ -7,8 +7,9 @@ export interface TicketListItem {
   rankNumber: number;
   elapsedMs: number;
   issuedAt: string;
-  roundId: number;
-  eventId: number;
+  // 이벤트 티켓은 roundId=null, 라이브 티켓은 eventId=null (API_docs §티켓)
+  roundId: number | null;
+  eventId: number | null;
 }
 
 export interface TicketDetail extends TicketListItem {

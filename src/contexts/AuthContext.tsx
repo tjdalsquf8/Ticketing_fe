@@ -27,6 +27,12 @@ interface User {
    * FE는 UI 노출 통제 목적으로만 사용한다.
    */
   role?: 'user' | 'admin';
+  /**
+   * 보유 포인트. `GET /users/me` 응답에 `points` 필드가 있으면 반영.
+   * BE 미구현 시 undefined → UI 는 "-" 표시.
+   * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
+   */
+  points?: number;
 }
 
 interface AuthContextValue {
@@ -49,6 +55,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** GET /users/me 재요청 후 user state 갱신. 포인트 변동(신청·환불·충전) 후 호출. */
+  refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -85,11 +93,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (Number.isFinite(n) && n > 0) setGuestNicknameChangedAt(n);
       }
 
+      // 로그인 상태로 하이드레이션됐다면 accessToken 유효성을 서버에 1회 확인한다.
+      // accessToken(쿠키)는 1시간 만료이지만 localStorage.auth_user는 만료 개념이 없어
+      // UI만 로그인 상태를 유지한 채 API가 게스트로 처리되는 오분기(예: 라이브 세션 시작
+      // → confirm 시 ticketId 미발급 → "티켓 놓쳤어요")를 막기 위함.
+      //
+      // apiFetch를 쓰지 않는 이유: refresh 실패 시 `forceLogout()`이 `/login`으로
+      // 강제 리다이렉트하는데, 초기 부팅 검증에서는 조용히 로그아웃 상태로만
+      // 전환하고 현재 페이지에 머무르길 원한다.
+      if (isLoggedIn) {
+        try {
+          const meRes = await fetch(ROUTES.users.me, {
+            method: 'GET',
+            credentials: 'include',
+          });
+          let ok = meRes.ok;
+          let meJson: unknown = ok ? await meRes.json().catch(() => null) : null;
+
+          if (!ok && meRes.status === 401) {
+            // refresh 1회 시도. 성공 시 users/me 재요청.
+            const refreshRes = await fetch(ROUTES.auth.refresh, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            }).catch(() => null);
+            if (refreshRes && refreshRes.ok) {
+              const retryRes = await fetch(ROUTES.users.me, {
+                method: 'GET',
+                credentials: 'include',
+              });
+              ok = retryRes.ok;
+              meJson = ok ? await retryRes.json().catch(() => null) : null;
+            }
+          }
+
+          if (ok && meJson && typeof meJson === 'object') {
+            const envelope = meJson as { success?: unknown; data?: unknown };
+            if (envelope.success === true && envelope.data && typeof envelope.data === 'object') {
+              const raw = envelope.data as {
+                id?: number | string;
+                email?: string;
+                name?: string;
+                role?: 'user' | 'admin';
+                points?: number | string;
+              };
+              if (raw.id !== undefined && raw.email && raw.name) {
+                const parsedPoints =
+                  typeof raw.points === 'number'
+                    ? raw.points
+                    : typeof raw.points === 'string' && raw.points !== ''
+                      ? Number(raw.points)
+                      : undefined;
+                const verified: User = {
+                  id: String(raw.id),
+                  email: raw.email,
+                  name: raw.name,
+                  ...(raw.role ? { role: raw.role } : {}),
+                  ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
+                    ? { points: parsedPoints }
+                    : {}),
+                };
+                setUser(verified);
+                localStorage.setItem(USER_KEY, JSON.stringify(verified));
+              }
+            }
+          } else {
+            // 명확한 실패 응답(401 후 refresh도 실패, 400/500 등) — 캐시 무효화하고 로그아웃 상태로 전환.
+            // 강제 리다이렉트하지 않음(현재 페이지 유지).
+            localStorage.removeItem(USER_KEY);
+            setUser(null);
+            isLoggedIn = false;
+          }
+        } catch {
+          // 네트워크 실패(오프라인 등)는 로컬 캐시를 관대하게 유지 — 다음 API 호출에서 자연 재검증.
+        }
+      }
+
       // 게스트 부트스트랩: 로그인 유저가 아니고 localStorage에 닉네임 캐시가 없을 때
       // HttpOnly `guest_uuid` 쿠키가 살아있으면 서버에서 최초 닉네임을 1회 복구한다.
       // (UUID 자체는 프론트에서 저장/조회하지 않는다 — 쿠키 전용.)
+      //
+      // 단, 이번 마운트에서 "로그인 유저 → 토큰 만료로 로그아웃 전환"된 경우엔
+      // 같은 tick 에서 게스트 부트스트랩까지 이어붙이지 않는다(UX 상 부자연스러움).
+      // 다음 페이지 진입 시 자연 발생.
       const hasNicknameCache = !!localStorage.getItem(GUEST_NICKNAME_KEY);
-      if (!isLoggedIn && !hasNicknameCache) {
+      if (!isLoggedIn && !stored && !hasNicknameCache) {
         try {
           const data = await getGuestMe();
           if (data.nickname) {
@@ -206,6 +294,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(GUEST_NICKNAME_KEY, trimmed);
   }, [guestNickname]);
 
+  const refreshMe = useCallback(async () => {
+    try {
+      const raw = await apiFetch<{
+        id?: number | string;
+        email?: string;
+        name?: string;
+        role?: 'user' | 'admin';
+        points?: number | string;
+      }>(ROUTES.users.me);
+      if (raw.id === undefined || !raw.email || !raw.name) return;
+      const parsedPoints =
+        typeof raw.points === 'number'
+          ? raw.points
+          : typeof raw.points === 'string' && raw.points !== ''
+            ? Number(raw.points)
+            : undefined;
+      const verified: User = {
+        id: String(raw.id),
+        email: raw.email,
+        name: raw.name,
+        ...(raw.role ? { role: raw.role } : {}),
+        ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
+          ? { points: parsedPoints }
+          : {}),
+      };
+      setUser(verified);
+      localStorage.setItem(USER_KEY, JSON.stringify(verified));
+    } catch {
+      // 조용히 무시. 실패해도 기존 user state 유지.
+    }
+  }, []);
+
   const login = useCallback(async (email: string, password: string) => {
     const { userInfo } = await apiFetch<{ userInfo: User }>(ROUTES.auth.login, {
       method: "POST",
@@ -216,7 +336,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 지우면 login→logout 사이클로 쿨다운을 리셋하는 우회가 가능해짐.
     localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
     setUser(userInfo);
-  }, []);
+
+    // login 응답에는 points 가 없을 수 있으므로 users/me 로 최신 잔액 fetch.
+    refreshMe();
+  }, [refreshMe]);
 
   const signup = useCallback(
     async (email: string, password: string, name: string) => {
@@ -255,6 +378,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         signup,
         logout,
+        refreshMe,
       }}
     >
       {children}

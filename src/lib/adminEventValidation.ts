@@ -14,22 +14,59 @@ export const EVENT_CATEGORIES = [
 
 export type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
+/** FE 한글 카테고리 → BE 영문 코드 매핑 (md/API_docs.md §이벤트 목록 조회 참고). */
+export const BE_CATEGORY_MAP: Record<EventCategory,
+  'concert' | 'musical' | 'sports' | 'theater' | 'festival'> = {
+  '콘서트': 'concert',
+  '뮤지컬': 'musical',
+  '스포츠': 'sports',
+  '연극': 'theater',
+  '페스티벌': 'festival',
+};
+
+export const KR_CATEGORY_MAP: Record<
+  'concert' | 'musical' | 'sports' | 'theater' | 'festival',
+  EventCategory
+> = {
+  concert: '콘서트',
+  musical: '뮤지컬',
+  sports: '스포츠',
+  theater: '연극',
+  festival: '페스티벌',
+};
+
 export const EVENT_TYPES = ['live', 'paid'] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
 // 필드 제한 — 백엔드 스키마와 정렬 필요. 우선 합리적 상한.
 export const LIMITS = {
   title:            { min: 1,   max: 80 },
-  venue:            { min: 1,   max: 60 },
+  venueId:          { min: 1,   max: 60 },
   prize:            { min: 1,   max: 120 },
   posterInitial:    { min: 0,   max: 8 },
   totalSeats:       { min: 1,   max: 200_000 },
-  entryFeePoints:   { min: 0,   max: 100_000 },
+  entryFeePoints:   { min: 0,   max: 10_000 },
   entryFeeTickets:  { min: 0,   max: 100 },
+  // BE 스펙: 이벤트 durationMs 최대 24시간. 폼 UI 아직 없지만 향후 대비.
+  durationMs:       { min: 1,   max: 24 * 60 * 60 * 1000 },
+  // BE 스펙: 이벤트 취소 사유 최대 500자.
+  cancelReason:     { min: 1,   max: 500 },
 } as const;
 
 // 오픈 시각 상한: 지금부터 최대 1년.
 export const OPENS_AT_MAX_MS_FROM_NOW = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * datetime-local 값(`YYYY-MM-DDTHH:MM`)을 정각으로 스냅.
+ * 분·초를 00 으로 강제. 빈 문자열은 그대로 반환.
+ */
+export function snapOpensAtToHour(v: string): string {
+  if (!v) return v;
+  // 'YYYY-MM-DDTHH:MM' 또는 'YYYY-MM-DDTHH:MM:SS' 형태.
+  const m = /^(\d{4}-\d{2}-\d{2}T\d{2}):\d{2}(?::\d{2})?$/.exec(v);
+  if (!m) return v;
+  return `${m[1]}:00`;
+}
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 // C0/C1 제어문자 (개행·탭 포함) 제거용.
@@ -79,12 +116,10 @@ export function isValidEventType(v: string): v is EventType {
 }
 
 export interface EventFormValues {
-  type: EventType;
   title: string;
   category: string;
-  venue: string;
-  posterColor: string;
-  posterInitial: string;
+  /** 등록된 공연장의 venue.id (예: 'kspo-dome-v1'). 비어있으면 미선택. */
+  venueId: string;
   opensAt: string;
   totalSeats: string;
   entryFeePoints: string;
@@ -96,14 +131,11 @@ export type EventFormErrors = Partial<Record<keyof EventFormValues, string>>;
 
 /**
  * 폼 전체 검증. 에러 맵 반환 — 비어 있으면 통과.
- * 유료 타입일 때만 entryFee 계열 및 prize 검증.
+ * 관리자 폼은 항상 유료(paid) 이벤트를 개설한다 (라이브는 별도 페이지에서 관리).
+ * 포스터 이니셜/배경 색상은 공연장 대표 이미지로 대체되어 폼 필드 자체가 사라졌다.
  */
 export function validateEventForm(v: EventFormValues): EventFormErrors {
   const errors: EventFormErrors = {};
-
-  if (!isValidEventType(v.type)) {
-    errors.type = '유효한 이벤트 타입을 선택해 주세요.';
-  }
 
   const title = sanitizeLine(v.title);
   if (title.length < LIMITS.title.min) {
@@ -116,29 +148,22 @@ export function validateEventForm(v: EventFormValues): EventFormErrors {
     errors.category = '유효한 카테고리를 선택해 주세요.';
   }
 
-  const venue = sanitizeLine(v.venue);
-  if (venue.length < LIMITS.venue.min) {
-    errors.venue = '공연장을 입력해 주세요.';
-  } else if (venue.length > LIMITS.venue.max) {
-    errors.venue = `공연장은 ${LIMITS.venue.max}자 이하여야 합니다.`;
-  }
-
-  if (!isHexColor(v.posterColor)) {
-    errors.posterColor = '배경 색상은 #RRGGBB 형식이어야 합니다.';
-  }
-
-  // 포스터 이니셜은 선택 필드 — 값이 있으면 길이만 재확인.
-  const initial = normalizePosterInitial(v.posterInitial);
-  if (initial.length > LIMITS.posterInitial.max) {
-    errors.posterInitial = `이니셜은 ${LIMITS.posterInitial.max}자 이하여야 합니다.`;
+  const venueId = sanitizeLine(v.venueId);
+  if (venueId.length < LIMITS.venueId.min) {
+    errors.venueId = '공연장을 선택해 주세요.';
+  } else if (venueId.length > LIMITS.venueId.max) {
+    errors.venueId = `공연장 식별자는 ${LIMITS.venueId.max}자 이하여야 합니다.`;
   }
 
   if (!v.opensAt) {
     errors.opensAt = '오픈 시각을 지정해 주세요.';
   } else {
-    const t = new Date(v.opensAt).getTime();
+    const d = new Date(v.opensAt);
+    const t = d.getTime();
     if (!Number.isFinite(t)) {
       errors.opensAt = '유효한 오픈 시각이 아닙니다.';
+    } else if (d.getMinutes() !== 0 || d.getSeconds() !== 0 || d.getMilliseconds() !== 0) {
+      errors.opensAt = '오픈 시각은 정각(분·초 00)만 지정할 수 있습니다.';
     } else {
       const now = Date.now();
       if (t < now) {
@@ -153,19 +178,17 @@ export function validateEventForm(v: EventFormValues): EventFormErrors {
     errors.totalSeats = `총 좌석은 ${LIMITS.totalSeats.min}~${LIMITS.totalSeats.max.toLocaleString()} 정수여야 합니다.`;
   }
 
-  if (v.type === 'paid') {
-    if (parseIntegerInRange(v.entryFeePoints, LIMITS.entryFeePoints) === null) {
-      errors.entryFeePoints = `참여비(포인트)는 ${LIMITS.entryFeePoints.min}~${LIMITS.entryFeePoints.max.toLocaleString()} 정수여야 합니다.`;
-    }
-    if (parseIntegerInRange(v.entryFeeTickets, LIMITS.entryFeeTickets) === null) {
-      errors.entryFeeTickets = `참여비(티켓)는 ${LIMITS.entryFeeTickets.min}~${LIMITS.entryFeeTickets.max} 정수여야 합니다.`;
-    }
-    const prize = sanitizeLine(v.prize);
-    if (prize.length < LIMITS.prize.min) {
-      errors.prize = '상품 내용을 입력해 주세요.';
-    } else if (prize.length > LIMITS.prize.max) {
-      errors.prize = `상품 내용은 ${LIMITS.prize.max}자 이하여야 합니다.`;
-    }
+  if (parseIntegerInRange(v.entryFeePoints, LIMITS.entryFeePoints) === null) {
+    errors.entryFeePoints = `참여비(포인트)는 ${LIMITS.entryFeePoints.min}~${LIMITS.entryFeePoints.max.toLocaleString()} 정수여야 합니다.`;
+  }
+  if (parseIntegerInRange(v.entryFeeTickets, LIMITS.entryFeeTickets) === null) {
+    errors.entryFeeTickets = `참여비(티켓)는 ${LIMITS.entryFeeTickets.min}~${LIMITS.entryFeeTickets.max} 정수여야 합니다.`;
+  }
+  const prize = sanitizeLine(v.prize);
+  if (prize.length < LIMITS.prize.min) {
+    errors.prize = '상품 내용을 입력해 주세요.';
+  } else if (prize.length > LIMITS.prize.max) {
+    errors.prize = `상품 내용은 ${LIMITS.prize.max}자 이하여야 합니다.`;
   }
 
   return errors;

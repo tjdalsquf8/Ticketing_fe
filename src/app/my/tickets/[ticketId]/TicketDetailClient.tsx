@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getLiveEventByEventId } from '@/data/live';
 import { ApiError } from '@/lib/errors';
 import { getTicket, type TicketDetail } from '@/lib/tickets';
+import { getEvent, type EventDetail } from '@/lib/events';
 
 interface Props {
   ticketId: string;
@@ -29,6 +30,7 @@ function TicketCardSkeleton() {
 export default function TicketDetailClient({ ticketId }: Props) {
   const { user } = useAuth();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [event, setEvent] = useState<EventDetail | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<ErrorState | null>(null);
 
@@ -55,6 +57,29 @@ export default function TicketDetailClient({ ticketId }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // 이벤트 티켓(roundId=null)이면 이벤트 메타 조회. 실패는 무시(폴백 라벨 사용).
+  useEffect(() => {
+    if (!ticket) return;
+    if (ticket.roundId != null) return;
+    if (ticket.eventId == null) return;
+    let alive = true;
+    getEvent(ticket.eventId)
+      .then((ev) => {
+        if (alive) setEvent(ev);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [ticket]);
+
+  const isEventTicket = !!ticket && ticket.roundId == null;
+  const ticketTitle = isEventTicket
+    ? event?.title ?? '유료 이벤트'
+    : (ticket?.eventId != null
+        ? getLiveEventByEventId(ticket.eventId)?.title
+        : undefined) ?? '실시간 회차';
 
   const backToList = (
     <Link
@@ -125,10 +150,8 @@ export default function TicketDetailClient({ ticketId }: Props) {
         <>
           <div className="flex justify-center">
             <TicketCard
-              mode="live"
-              eventTitle={
-                getLiveEventByEventId(ticket.eventId)?.title ?? '실시간 회차'
-              }
+              mode={isEventTicket ? 'event' : 'live'}
+              eventTitle={ticketTitle}
               seat={ticket.seatLabel}
               nickname={user?.name ?? '—'}
               elapsedMs={ticket.elapsedMs}
@@ -162,8 +185,11 @@ export default function TicketDetailClient({ ticketId }: Props) {
             <Link href="/my/tickets" className="btn btn-outline flex-1">
               내 티켓 목록
             </Link>
-            <Link href="/live" className="btn btn-solid flex-1">
-              다른 회차 보기
+            <Link
+              href={isEventTicket ? '/event' : '/live'}
+              className="btn btn-solid flex-1"
+            >
+              {isEventTicket ? '다른 이벤트 보기' : '다른 회차 보기'}
             </Link>
           </div>
         </>
