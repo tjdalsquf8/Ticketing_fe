@@ -11,7 +11,6 @@ export const metadata: Metadata = { title: '랭킹' };
 type Board = 'time' | 'tickets' | 'latest-event';
 type Mode = 'practice' | 'live';
 type Period = 'daily' | 'weekly' | 'monthly';
-type TicketPeriod = 'weekly' | 'monthly' | 'all';
 
 type RankEntry = {
   rank: number;
@@ -54,31 +53,11 @@ const PERIOD_LABELS: Record<Period, string> = {
   monthly: '월간',
 };
 
-const TICKET_PERIOD_LABELS: Record<TicketPeriod, string> = {
-  weekly: '주간',
-  monthly: '월간',
-  all: '전체',
-};
-
 const BOARD_DESCRIPTION: Record<Board, string> = {
   time: '소요 시간이 빠른 순으로 정렬됩니다.',
   tickets: '누적 티켓 수 기준 회원 순위입니다 (게스트 제외).',
   'latest-event': '가장 최근에 종료된 이벤트의 참여자 순위입니다.',
 };
-
-// 뼈대 mock — 백엔드 board=tickets 엔드포인트 구현 시 대체
-const MOCK_TICKET_RANKINGS: TicketEntry[] = [
-  { rank: 1, nickname: '조성민', tickets: 47 },
-  { rank: 2, nickname: '낭낭',   tickets: 42 },
-  { rank: 3, nickname: '시골쥐', tickets: 38 },
-  { rank: 4, nickname: '빅뱅',   tickets: 31 },
-  { rank: 5, nickname: '구구',   tickets: 28 },
-  { rank: 6, nickname: '강쥐',   tickets: 23 },
-  { rank: 7, nickname: '사자',   tickets: 20 },
-  { rank: 8, nickname: '하냥',   tickets: 17 },
-  { rank: 9, nickname: '별이',   tickets: 12 },
-  { rank: 10, nickname: '햇살',  tickets:  9 },
-];
 
 function toFiniteNumber(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
@@ -132,9 +111,41 @@ async function fetchTimeRankings(mode: Mode, period: Period, eventId?: number): 
   }
 }
 
-// 백엔드 board=tickets 미구현 상태 — 향후 GET /rankings?board=tickets&period=... 대체
-async function fetchTicketRankings(_period: TicketPeriod): Promise<TicketEntry[]> {
-  return MOCK_TICKET_RANKINGS;
+function normalizeTicketEntry(v: unknown): TicketEntry | null {
+  if (!v || typeof v !== 'object') return null;
+  const e = v as Record<string, unknown>;
+  const rank = toFiniteNumber(e.rank);
+  const tickets = toFiniteNumber(e.ticketCount);
+  if (rank === null || tickets === null || typeof e.nickname !== 'string') return null;
+  return { rank, nickname: e.nickname, tickets };
+}
+
+async function fetchTicketRankings(): Promise<TicketEntry[]> {
+  const qs = new URLSearchParams({ mode: 'ticket', page: '1', size: '20' });
+  const url = `${ROUTES.rankings}?${qs.toString()}`;
+
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`[ranking] ticket fetch failed: ${res.status} ${res.statusText}`);
+      }
+      return [];
+    }
+    const json = (await res.json()) as { success?: boolean; data?: unknown };
+    if (!Array.isArray(json.data)) return [];
+    return json.data
+      .map(normalizeTicketEntry)
+      .filter((e): e is TicketEntry => e !== null);
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[ranking] ticket fetch error:', e);
+    }
+    return [];
+  }
 }
 
 export default async function RankingPage({
@@ -187,7 +198,7 @@ export default async function RankingPage({
       {board === 'time' ? (
         <TimeBoard params={params} />
       ) : board === 'tickets' ? (
-        <TicketBoard params={params} />
+        <TicketBoard />
       ) : (
         <LatestEventBoard />
       )}
@@ -301,40 +312,11 @@ async function TimeBoard({
 
 // ── 티켓 누적 보드 ─────────────────────────────────────
 
-async function TicketBoard({
-  params,
-}: {
-  params: { period?: string | string[] };
-}) {
-  const period: TicketPeriod =
-    params.period === 'weekly' ? 'weekly'
-    : params.period === 'monthly' ? 'monthly'
-    : 'all';
-
-  const rankings = await fetchTicketRankings(period);
+async function TicketBoard() {
+  const rankings = await fetchTicketRankings();
 
   return (
     <>
-      {/* 기간 필터 (블록 래퍼로 상위 탭과 수직 분리) */}
-      <div>
-        <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
-          {(Object.keys(TICKET_PERIOD_LABELS) as TicketPeriod[]).map((p) => (
-            <Link
-              key={p}
-              href={`/ranking?board=tickets&period=${p}`}
-              className={[
-                'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
-                p === period
-                  ? 'bg-bg-surface text-text shadow-xs border border-border'
-                  : 'text-text-secondary hover:text-text',
-              ].join(' ')}
-            >
-              {TICKET_PERIOD_LABELS[p]}
-            </Link>
-          ))}
-        </div>
-      </div>
-
       {/* 테이블 */}
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
