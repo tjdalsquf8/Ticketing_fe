@@ -72,6 +72,9 @@ export const ROUTES = {
     gifticons: `${BASE_URL}/admin/gifticons`,
     gifticonsSummary: `${BASE_URL}/admin/gifticons/summary`,
     gifticonDetail: (id: number | string) => `${BASE_URL}/admin/gifticons/${id}`,
+    settlementsGifticons: `${BASE_URL}/admin/settlements/gifticons`,
+    settlementGifticonIssue: (id: number | string) =>
+      `${BASE_URL}/admin/settlements/gifticons/${id}/issue`,
   },
 };
 

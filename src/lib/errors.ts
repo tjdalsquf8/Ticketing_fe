@@ -103,6 +103,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   GIFTICON_CODE_DUPLICATE: "이미 등록된 바코드 번호입니다.",
   GIFTICON_NOT_EDITABLE: "지급·사용된 재고는 수정할 수 없습니다.",
   GIFTICON_NOT_DELETABLE: "지급·사용된 재고는 삭제할 수 없습니다.",
+  GIFTICON_NOT_AVAILABLE: "이미 다른 곳에 지급되었거나 사용할 수 없는 재고입니다.",
+  // 정산(기프티콘) 도메인
+  SETTLEMENT_NOT_FOUND: "해당 정산 대상을 찾을 수 없습니다.",
+  SETTLEMENT_ALREADY_ISSUED: "이미 지급 완료된 대상입니다.",
   // 이벤트 rate limit — BE 스펙:
   //   TOO_MANY_EVENT_REQUESTS (공개 조회, IP 1분 60)
   //   TOO_MANY_EVENT_ACTIONS (신청/취소/세션시작, 유저 1분 10)
