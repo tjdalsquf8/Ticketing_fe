@@ -11,7 +11,7 @@ import {
 
 /* ──────────────────────────────────────────
    홈 개인화 스트립 — 로그인 유저 전용
-   ─ 좌: 포인트 · 누적 티켓 · 진행 중 신청 (3-스탯)
+   ─ 좌: 누적 티켓 · 진행 중 신청 (2-스탯)
    ─ 아래: 하이라이트 CTA (open 상태 신청 있으면 "지금 참여")
              없으면 가장 가까운 pending 오픈 카운트다운
    ────────────────────────────────────────── */
@@ -114,7 +114,6 @@ export default function HomePersonalStrip() {
 
   if (authLoading || !user) return null;
 
-  const points = user.points;
   const activeCount = stats.activeRegs?.length ?? null;
 
   return (
@@ -130,17 +129,7 @@ export default function HomePersonalStrip() {
           </div>
         </div>
 
-        <ul className="grid grid-cols-3 gap-2 sm:gap-4">
-          <StatItem
-            label="보유 포인트"
-            value={
-              typeof points === 'number'
-                ? `${points.toLocaleString()} P`
-                : '—'
-            }
-            href="/my/points"
-            loaded
-          />
+        <ul className="grid grid-cols-2 gap-2 sm:gap-4">
           <StatItem
             label="누적 티켓"
             value={

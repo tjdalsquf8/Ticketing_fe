@@ -65,7 +65,7 @@ export interface Registration {
   eventId: number;
   userId?: number;
   status: RegistrationStatus;
-  pointsPaid: number;
+  pointsPaid?: number;
   refundPoints?: number;
   createdAt: string;
 }
