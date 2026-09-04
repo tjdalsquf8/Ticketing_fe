@@ -40,8 +40,6 @@ export const ROUTES = {
       `${BASE_URL}/practice/sessions/${sessionId}/complete`,
   },
   rankings: `${BASE_URL}/rankings`,
-  notices: (limit = 20) => `${BASE_URL}/notices?limit=${limit}`,
-  noticeDetail: (id: number | string) => `${BASE_URL}/notices/${id}`,
   time: `${BASE_URL}/time`,
   live: {
     current: `${BASE_URL}/live/current`,
@@ -77,8 +75,6 @@ export const ROUTES = {
     settlementsGifticons: `${BASE_URL}/admin/settlements/gifticons`,
     settlementGifticonIssue: (id: number | string) =>
       `${BASE_URL}/admin/settlements/gifticons/${id}/issue`,
-    notices: `${BASE_URL}/admin/notices`,
-    noticeDetail: (id: number | string) => `${BASE_URL}/admin/notices/${id}`,
   },
 };
 

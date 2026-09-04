@@ -14,7 +14,6 @@ const NAV = [
   { href: '/admin/events',      label: '이벤트 관리',  exact: false },
   { href: '/admin/gifticons',   label: '기프티콘 재고', exact: false },
   { href: '/admin/settlements', label: '정산 이력',    exact: false },
-  { href: '/admin/notices',     label: '공지사항',     exact: false },
 ] as const;
 
 export default function AdminSidebar() {
