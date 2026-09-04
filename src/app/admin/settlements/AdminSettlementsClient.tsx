@@ -124,14 +124,14 @@ export default function AdminSettlementsClient() {
       </div>
 
       {/* 상태 필터 */}
-      <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+      <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
         {STATUS_FILTERS.map(({ key, label }) => (
           <button
             key={key}
             type="button"
             onClick={() => setStatusFilter(key)}
             className={[
-              'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+              'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
               key === statusFilter
                 ? 'bg-bg-surface text-text shadow-xs border border-border'
                 : 'text-text-secondary hover:text-text',
@@ -169,7 +169,8 @@ export default function AdminSettlementsClient() {
                     {done} / {rows.length} 완료
                   </span>
                 </div>
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left px-4 py-2 text-xs font-semibold text-text-secondary w-14 whitespace-nowrap">순위</th>
@@ -216,6 +217,7 @@ export default function AdminSettlementsClient() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             );
           })}
