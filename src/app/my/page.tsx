@@ -18,9 +18,6 @@ interface UserProfile {
   created_at: string;
 }
 
-// 리더보드 순위는 아직 백엔드 API 미구현.
-const LEADERBOARD_RANK: number | null = null;
-
 const REG_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: '신청 완료', cls: 'badge-info' },
   entered: { text: '참여함', cls: 'badge-primary' },
@@ -105,8 +102,8 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 통계 스탯 — 누적 티켓 / 포인트 / 리더보드 순위 */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {/* 통계 스탯 — 누적 티켓 / 포인트 */}
+        <div className="grid grid-cols-2 gap-3">
           <Link
             href="/my/tickets"
             className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
@@ -143,19 +140,6 @@ export default function MyPage() {
               )}
             </p>
           </Link>
-          <div className="rounded-lg border border-border bg-bg-subtle px-4 py-3">
-            <p className="text-xs text-text-secondary">리더보드 순위</p>
-            <p className="mt-1 font-mono-tabular">
-              {LEADERBOARD_RANK !== null ? (
-                <>
-                  <strong className="text-2xl text-text">{LEADERBOARD_RANK}</strong>
-                  <span className="text-sm text-text-tertiary ml-1">위</span>
-                </>
-              ) : (
-                <span className="text-sm text-text-tertiary">아직 순위 없음</span>
-              )}
-            </p>
-          </div>
         </div>
 
         {/* 관리자 진입 — role=admin 전용. UI 은닉이며 최종 인가는 백엔드 requireAdmin이 담당. */}
@@ -174,7 +158,8 @@ export default function MyPage() {
       <section>
         <h2 className="text-sm font-semibold text-text mb-3">이벤트 신청 이력</h2>
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">오픈</th>
@@ -227,6 +212,7 @@ export default function MyPage() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
@@ -234,7 +220,8 @@ export default function MyPage() {
       <section>
         <h2 className="text-sm font-semibold text-text mb-3">획득 기프티콘</h2>
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">날짜</th>
@@ -251,6 +238,7 @@ export default function MyPage() {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

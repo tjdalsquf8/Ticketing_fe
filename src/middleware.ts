@@ -16,16 +16,27 @@ import { NextResponse, type NextRequest } from 'next/server';
  * 로드 이후 apiFetch(401 자동 재시도) + AuthContext(마운트 시 users/me
  * 검증)가 담당하는 심층 방어 구조를 유지한다.
  *
- * 백엔드 인가(NOT_ADMIN 403)와 <AdminGuard>·마이페이지 useEffect 리다이렉트도
- * 그대로 남는다.
+ * 백엔드 인가(NOT_ADMIN 403)와 마이페이지 useEffect 리다이렉트도 그대로 남는다.
+ *
+ * /admin 은 /my 와 다르게 취급한다: 로그인 페이지로 보내면 그 자체로 "/admin
+ * 이라는 라우트가 실재한다"는 정보가 새므로, 비로그인 상태로 접근해도 로그인
+ * 유도 없이 곧장 404(존재하지 않는 라우트인 것처럼)를 렌더한다. 로그인은 됐지만
+ * role != admin 인 경우는 이 단계에서 판별 불가(쿠키에 role 없음)하므로
+ * <AdminGuard>(2층)가 admin API probe 로 마저 걸러 동일하게 404 처리한다.
  */
 export function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
 
-  const isProtected =
-    pathname.startsWith('/admin') || pathname.startsWith('/my');
+  if (pathname.startsWith('/admin')) {
+    const hasAccess = req.cookies.has('accessToken');
+    const hasRefresh = req.cookies.has('refreshToken');
+    if (!hasAccess && !hasRefresh) {
+      return NextResponse.rewrite(new URL('/_not-found', req.url));
+    }
+    return NextResponse.next();
+  }
 
-  if (isProtected) {
+  if (pathname.startsWith('/my')) {
     const hasAccess = req.cookies.has('accessToken');
     const hasRefresh = req.cookies.has('refreshToken');
     if (!hasAccess && !hasRefresh) {

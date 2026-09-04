@@ -145,14 +145,14 @@ export default function AdminEventsClient() {
 
       {/* 필터 + 숨김 정리 */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+        <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
           {STATUS_FILTERS.map(({ key, label }) => (
             <button
               key={key}
               type="button"
               onClick={() => setStatus(key)}
               className={[
-                'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                 key === status
                   ? 'bg-bg-surface text-text shadow-xs border border-border'
                   : 'text-text-secondary hover:text-text',
@@ -202,7 +202,8 @@ export default function AdminEventsClient() {
       )}
 
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b border-border bg-bg-subtle">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
@@ -280,6 +281,7 @@ export default function AdminEventsClient() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <EventCancelModal

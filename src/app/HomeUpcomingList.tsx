@@ -5,15 +5,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { listEvents, type EventListItem } from '@/lib/events';
 import { getAdminVenueOption } from '@/data/live';
-import { formatKstDateTime } from '@/lib/kst';
 import { safeHexColor, safeImageUrl } from '@/lib/safe';
-import { KR_CATEGORY_MAP } from '@/lib/adminEventValidation';
 
 /* ──────────────────────────────────────────
-   곧 오픈되는 이벤트 (가로 스크롤 카드 6개)
-   ─ listEvents({ status:'scheduled', limit:6 })
-   ─ opensAt ASC 는 서버 정렬
-   ─ 카운트다운은 1초마다 tick
+   다가오는 유료 이벤트 — 소형 사이드 위젯
+   ─ HomeLiveHero 우측 칼럼(데스크톱) / 히어로 아래(모바일)에 붙는다.
+   ─ listEvents({ status:'scheduled', limit:2 }) — 실시간과 헷갈리지 않게 최소 정보만.
    ────────────────────────────────────────── */
 
 function formatCountdown(ms: number): string {
@@ -39,7 +36,7 @@ export default function HomeUpcomingList() {
     let alive = true;
     (async () => {
       try {
-        const { data } = await listEvents({ status: 'scheduled', limit: 6 });
+        const { data } = await listEvents({ status: 'scheduled', limit: 2 });
         if (!alive) return;
         setItems(data);
       } catch {
@@ -57,46 +54,38 @@ export default function HomeUpcomingList() {
     return () => clearInterval(id);
   }, []);
 
-  // 이벤트는 자주 열리지 않는 도메인. 0개면 섹션 자체 숨김.
+  // 이벤트는 자주 열리지 않는 도메인. 0개면 위젯 자체 숨김.
   if (items !== null && items.length === 0) return null;
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-lg font-bold text-text">곧 오픈되는 티켓팅</h2>
-          <p className="text-xs text-text-tertiary truncate">
-            오픈 시간에 맞춰 실전 도전
-          </p>
-        </div>
+    <div className="card p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-xs font-bold text-text-secondary">
+          <span className="px-1.5 py-0.5 rounded bg-warning-bg text-warning-text text-[10px] font-bold tracking-wide">
+            유료
+          </span>
+          다가오는 이벤트
+        </p>
         <Link
           href="/event"
-          className="text-sm font-semibold text-primary hover:underline shrink-0"
+          className="text-[11px] font-semibold text-primary hover:underline shrink-0"
         >
-          전체 보기 →
+          전체 →
         </Link>
       </div>
 
-      {items === null ? (
-        <div className="-mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
-          <ul className="flex gap-4 pb-1" style={{ width: 'max-content' }}>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <li key={i}>
-                <div className="card w-64 shrink-0 overflow-hidden animate-pulse">
-                  <div className="aspect-[3/4] bg-bg-subtle" />
-                  <div className="p-4 space-y-2">
-                    <div className="h-4 w-3/4 bg-bg-subtle rounded" />
-                    <div className="h-3 w-1/2 bg-bg-subtle rounded" />
-                  </div>
+      <div className="space-y-2.5">
+        {items === null
+          ? Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2.5 animate-pulse">
+                <div className="w-11 h-11 rounded-md bg-bg-subtle shrink-0" />
+                <div className="flex-1 space-y-1.5 py-0.5">
+                  <div className="h-3 w-3/4 bg-bg-subtle rounded" />
+                  <div className="h-2.5 w-1/2 bg-bg-subtle rounded" />
                 </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : items.length === 0 ? null : (
-        <div className="-mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
-          <ul className="flex gap-4 pb-1" style={{ width: 'max-content' }}>
-            {items.map((ev) => {
+              </div>
+            ))
+          : items.map((ev) => {
               const venue = getAdminVenueOption(ev.venueId);
               const posterUrl = safeImageUrl(venue?.posterImage);
               const opensAtMs = Date.parse(ev.opensAt);
@@ -104,63 +93,45 @@ export default function HomeUpcomingList() {
                 ? opensAtMs - Date.now()
                 : 0;
               const countdown = formatCountdown(remaining);
-              const categoryKr = KR_CATEGORY_MAP[ev.category] ?? ev.category;
 
               return (
-                <li key={ev.eventId}>
-                  <Link
-                    href={`/event/${ev.eventId}`}
-                    className="card overflow-hidden w-64 shrink-0 block hover:border-border-strong transition-colors group"
+                <Link
+                  key={ev.eventId}
+                  href={`/event/${ev.eventId}`}
+                  className="flex items-center gap-2.5 group"
+                >
+                  <div
+                    className="relative w-11 h-11 rounded-md overflow-hidden shrink-0"
+                    style={{ backgroundColor: safeHexColor(ev.posterColor) }}
                   >
-                    <div
-                      className="aspect-[3/4] relative"
-                      style={{ backgroundColor: safeHexColor(ev.posterColor) }}
-                    >
-                      {posterUrl ? (
-                        <Image
-                          src={posterUrl}
-                          alt={venue?.name ?? ev.title}
-                          fill
-                          sizes="256px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <span className="text-4xl font-black text-white/90 leading-none select-none tracking-tight text-center px-4">
-                            {ev.posterInitial || 'TR'}
-                          </span>
-                        </div>
-                      )}
-                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/55 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wide z-10">
-                        {categoryKr}
-                      </div>
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between px-2.5 py-1.5 rounded-md bg-black/60 backdrop-blur-sm z-10">
-                        <span className="text-[10px] text-white/70 font-medium">
-                          오픈까지
-                        </span>
-                        <span className="text-xs font-mono-tabular font-bold text-white">
-                          {countdown}
+                    {posterUrl ? (
+                      <Image
+                        src={posterUrl}
+                        alt={venue?.name ?? ev.title}
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs font-black text-white/90 select-none">
+                          {ev.posterInitial || 'TR'}
                         </span>
                       </div>
-                    </div>
-                    <div className="p-4 space-y-1">
-                      <p className="text-sm font-bold text-text truncate group-hover:text-primary transition-colors">
-                        {ev.title}
-                      </p>
-                      <p className="text-xs text-text-secondary truncate">
-                        {venue?.name ?? ev.venueId}
-                      </p>
-                      <p className="text-xs text-text-tertiary pt-1 font-mono-tabular">
-                        {formatKstDateTime(ev.opensAt)}
-                      </p>
-                    </div>
-                  </Link>
-                </li>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-text truncate group-hover:text-primary transition-colors">
+                      {ev.title}
+                    </p>
+                    <p className="text-[11px] text-text-tertiary font-mono-tabular">
+                      오픈까지 {countdown}
+                    </p>
+                  </div>
+                </Link>
               );
             })}
-          </ul>
-        </div>
-      )}
-    </section>
+      </div>
+    </div>
   );
 }
