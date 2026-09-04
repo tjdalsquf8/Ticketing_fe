@@ -437,7 +437,7 @@ export default function BookingFlow({
       </div>
 
       {/* ── 본문: 좌석 영역 + 우측 패널 ── */}
-      <div className="flex flex-col sm:flex-row flex-1 gap-4 p-4 min-h-0 sm:items-start">
+      <div className="flex flex-1 gap-4 p-4 min-h-0 items-start">
 
         {/* 좌석 영역 */}
         <div className="flex-1 min-w-0">

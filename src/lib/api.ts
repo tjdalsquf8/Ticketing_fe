@@ -40,9 +40,6 @@ export const ROUTES = {
       `${BASE_URL}/practice/sessions/${sessionId}/complete`,
   },
   rankings: `${BASE_URL}/rankings`,
-  stats: {
-    daily: `${BASE_URL}/stats/daily`,
-  },
   notices: (limit = 20) => `${BASE_URL}/notices?limit=${limit}`,
   noticeDetail: (id: number | string) => `${BASE_URL}/notices/${id}`,
   time: `${BASE_URL}/time`,

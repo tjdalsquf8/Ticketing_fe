@@ -10,12 +10,11 @@ import {
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
 import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
-import HomeUpcomingList from './HomeUpcomingList';
 
 /* ──────────────────────────────────────────
    홈 hero — 진행 중 회차 우선, 없으면 다음 예정
-   ─ 좌: 이벤트 정보 + CTA (메인)
-   ─ 우: 포스터 + 유료 이벤트 소형 위젯 (데스크톱), 모바일은 히어로 아래로
+   ─ 좌: 이벤트 정보 + CTA
+   ─ 우: 포스터 (venueId slug 매핑 실패 시 fallback)
    ────────────────────────────────────────── */
 
 function pad2(n: number): string {
@@ -76,9 +75,8 @@ export default function HomeLiveHero() {
   });
 
   return (
-    <div className="space-y-4">
     <section className="grid md:grid-cols-[minmax(0,1fr)_16rem] lg:grid-cols-[minmax(0,1fr)_18rem] gap-6 items-start">
-      {/* 좌: 이벤트 정보 카드 (메인) */}
+      {/* 좌: 이벤트 정보 카드 */}
       <div className="card p-6 sm:p-8 flex flex-col gap-5 min-w-0">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-danger-bg border border-danger-border">
@@ -98,12 +96,7 @@ export default function HomeLiveHero() {
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <p className="text-xs font-semibold text-primary tracking-wide">{category}</p>
-              <span className="px-1.5 py-0.5 rounded bg-success-bg text-success-text text-[10px] font-bold tracking-wide">
-                무료 · 실시간
-              </span>
-            </div>
+            <p className="text-xs font-semibold text-primary tracking-wide">{category}</p>
             <h1 className="text-2xl sm:text-[28px] font-bold text-text leading-tight">
               {title}
             </h1>
@@ -134,55 +127,46 @@ export default function HomeLiveHero() {
           </div>
         </div>
 
-      {/* 우: 포스터 + 유료 이벤트 위젯 (데스크톱 전용, practice 상세 카드와 동일 포스터 스타일) */}
-      <div className="hidden md:flex md:flex-col gap-4">
-        <div
-          className="relative w-full rounded-xl overflow-hidden aspect-[3/4] bg-[#0b1220]"
-          aria-label="공연 포스터"
-        >
-          {poster && (
-            <Image
-              src={poster}
-              alt={title}
-              fill
-              sizes="(min-width: 1024px) 18rem, 16rem"
-              className="object-cover"
-              priority
-            />
-          )}
-          <div
-            className="absolute inset-x-0 bottom-0 h-2/3 z-10 pointer-events-none"
-            style={{
-              background:
-                'linear-gradient(to top, rgba(0,0,0,0.85) 20%, transparent)',
-            }}
+      {/* 우: 포스터 카드 (practice 상세 카드와 동일 스타일) */}
+      <div
+        className="hidden md:block relative w-full rounded-xl overflow-hidden aspect-[3/4] bg-[#0b1220]"
+        aria-label="공연 포스터"
+      >
+        {poster && (
+          <Image
+            src={poster}
+            alt={title}
+            fill
+            sizes="(min-width: 1024px) 18rem, 16rem"
+            className="object-cover"
+            priority
           />
-          <div className="absolute inset-0 z-20 p-5 flex flex-col justify-between">
-            <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/70">
-              Ticket Rush · Live
+        )}
+        <div
+          className="absolute inset-x-0 bottom-0 h-2/3 z-10 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(to top, rgba(0,0,0,0.85) 20%, transparent)',
+          }}
+        />
+        <div className="absolute inset-0 z-20 p-5 flex flex-col justify-between">
+          <p className="text-[9px] font-bold tracking-[0.3em] uppercase text-white/70">
+            Ticket Rush · Live
+          </p>
+          <div>
+            <p className="text-white font-black text-base leading-tight drop-shadow line-clamp-2">
+              {title}
             </p>
-            <div>
-              <p className="text-white font-black text-base leading-tight drop-shadow line-clamp-2">
-                {title}
-              </p>
-              {venueName && (
-                <p className="text-white/50 text-xs mt-2 truncate">{venueName}</p>
-              )}
-              <p className="text-white/30 text-[11px] mt-0.5 font-mono-tabular">
-                {isOpen ? '진행 중' : opensAtLabel}
-              </p>
-            </div>
+            {venueName && (
+              <p className="text-white/50 text-xs mt-2 truncate">{venueName}</p>
+            )}
+            <p className="text-white/30 text-[11px] mt-0.5 font-mono-tabular">
+              {isOpen ? '진행 중' : opensAtLabel}
+            </p>
           </div>
         </div>
-        <HomeUpcomingList />
       </div>
     </section>
-
-      {/* 모바일: 유료 이벤트 위젯을 히어로 아래로 */}
-      <div className="md:hidden">
-        <HomeUpcomingList />
-      </div>
-    </div>
   );
 }
 

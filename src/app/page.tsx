@@ -2,6 +2,7 @@ import HomeWelcomeHero from './HomeWelcomeHero';
 import HomeAnnouncements from './HomeAnnouncements';
 import HomePersonalStrip from './HomePersonalStrip';
 import HomeOpenBanner from './HomeOpenBanner';
+import HomeUpcomingList from './HomeUpcomingList';
 import HomeLiveHero from './HomeLiveHero';
 import HomeLatestResults from './HomeLatestResults';
 import HomeActivityStats from './HomeActivityStats';
@@ -20,6 +21,7 @@ export default function HomePage() {
       <HomeAnnouncements />
       <HomePersonalStrip />
       <HomeOpenBanner />
+      <HomeUpcomingList />
       <HomeLiveHero />
       <HomeLatestResults />
       <HomeActivityStats />

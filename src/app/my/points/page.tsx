@@ -227,8 +227,7 @@ export default function PointsPage() {
               아직 사용·환불 내역이 없습니다.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-bg-subtle">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">
@@ -280,7 +279,6 @@ export default function PointsPage() {
                 ))}
               </tbody>
             </table>
-            </div>
           )}
         </div>
         <p className="text-[11px] text-text-tertiary">

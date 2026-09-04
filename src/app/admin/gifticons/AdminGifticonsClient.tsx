@@ -204,14 +204,14 @@ export default function AdminGifticonsClient() {
       {/* 필터 */}
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap justify-between">
         <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-          <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+          <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
             {STATUS_FILTERS.map(({ key, label }) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleStatusChange(key)}
                 className={[
-                  'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                  'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                   key === status
                     ? 'bg-bg-surface text-text shadow-xs border border-border'
                     : 'text-text-secondary hover:text-text',
@@ -264,8 +264,7 @@ export default function AdminGifticonsClient() {
 
       {/* 목록 */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-bg-subtle">
               <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">ID</th>
@@ -343,7 +342,6 @@ export default function AdminGifticonsClient() {
             )}
           </tbody>
         </table>
-        </div>
       </div>
 
       {/* 페이지네이션 */}

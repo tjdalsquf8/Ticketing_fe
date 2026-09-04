@@ -29,7 +29,7 @@ export default function SelectionPanel({
   const totalPrice = selected.reduce((sum, s) => sum + (venue.tiers[s.tier]?.price ?? 0), 0);
 
   return (
-    <aside className="w-full sm:w-56 shrink-0 space-y-2">
+    <aside className="w-56 shrink-0 space-y-2">
 
       {/* 좌석도 전체보기 */}
       <button

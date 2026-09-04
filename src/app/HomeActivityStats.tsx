@@ -2,39 +2,35 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { apiFetch, ROUTES } from '@/lib/api';
 
 /* ──────────────────────────────────────────
    HomeActivityStats — 홈 지표 카드 (비대칭 레이아웃)
    ─ 좌: 오늘 발급 티켓 — 큰 강조 셀 (primary-subtle 배경, 시선 앵커)
-   ─ 우: 이번 주 최고 기록 / 오늘 참여 인원 — 세로 스택
+   ─ 우: 이번 주 최고 기록 / 최근 24h 매치 — 세로 스택
+   ─ BE `GET /api/stats/daily` 미구현 → mock. 훅 내부만 교체하면 실데이터 전환.
    ────────────────────────────────────────── */
 
 interface DailyStats {
   ticketsIssuedToday: number;
-  fastestMsThisWeek: number | null;
-  participantsToday: number;
+  fastestMsThisWeek: number;
+  matchesLast24h: number;
 }
 
-function useDailyStats(): { data: DailyStats | null; error: boolean } {
+function useDailyStats(): { data: DailyStats | null; isMock: boolean } {
   const [data, setData] = useState<DailyStats | null>(null);
-  const [error, setError] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    apiFetch<DailyStats>(ROUTES.stats.daily)
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
+    const id = setTimeout(() => {
+      setData({
+        ticketsIssuedToday: 128,
+        fastestMsThisWeek: 1892,
+        matchesLast24h: 24,
       });
-    return () => {
-      cancelled = true;
-    };
+    }, 60);
+    return () => clearTimeout(id);
   }, []);
 
-  return { data, error };
+  return { data, isMock: true };
 }
 
 /** 0 → target easeOutQuad tween. 800ms. */
@@ -63,11 +59,11 @@ function formatMs(ms: number | null): string {
 }
 
 export default function HomeActivityStats() {
-  const { data, error } = useDailyStats();
+  const { data, isMock } = useDailyStats();
 
   const tickets = useCounter(data?.ticketsIssuedToday ?? null);
   const fastest = useCounter(data?.fastestMsThisWeek ?? null);
-  const participants = useCounter(data?.participantsToday ?? null);
+  const matches = useCounter(data?.matchesLast24h ?? null);
 
   return (
     <section aria-labelledby="stats-heading" className="space-y-3">
@@ -85,9 +81,9 @@ export default function HomeActivityStats() {
             지금 이 시각 TicketRush
           </h2>
         </div>
-        {error && (
+        {isMock && (
           <span className="text-[10px] font-semibold text-text-tertiary tracking-wider uppercase px-2 py-0.5 rounded bg-bg-subtle">
-            집계 불러오기 실패
+            실시간 집계 준비 중
           </span>
         )}
       </div>
@@ -181,7 +177,7 @@ export default function HomeActivityStats() {
             </div>
             <p className="flex items-baseline gap-1 font-mono-tabular">
               <span className="text-3xl font-black text-text tracking-tight">
-                {formatMs(data?.fastestMsThisWeek != null ? fastest : null)}
+                {formatMs(data ? fastest : null)}
               </span>
               <span className="text-sm font-semibold text-text-tertiary">
                 s
@@ -192,7 +188,7 @@ export default function HomeActivityStats() {
             </p>
           </div>
 
-          {/* 오늘 참여 인원 */}
+          {/* 최근 24시간 매치 */}
           <div className="rounded-2xl border border-border bg-bg-surface shadow-sm p-5">
             <div className="flex items-center gap-2 mb-2">
               <svg
@@ -204,24 +200,24 @@ export default function HomeActivityStats() {
                 className="text-text-tertiary"
               >
                 <path
-                  d="M10 9a3 3 0 100-6 3 3 0 000 6zm-6 8a6 6 0 1112 0 1 1 0 01-1 1H5a1 1 0 01-1-1z"
+                  d="M3 5a2 2 0 012-2h10a2 2 0 012 2v2H3V5zm14 4H3v6a2 2 0 002 2h10a2 2 0 002-2V9zm-9 3a1 1 0 011-1h4a1 1 0 110 2H9a1 1 0 01-1-1z"
                   fill="currentColor"
                 />
               </svg>
               <p className="text-xs font-semibold text-text-secondary">
-                오늘 참여 인원
+                최근 24시간 매치
               </p>
             </div>
             <p className="flex items-baseline gap-1 font-mono-tabular">
               <span className="text-3xl font-black text-text tracking-tight">
-                {Math.round(participants).toLocaleString()}
+                {Math.round(matches).toLocaleString()}
               </span>
               <span className="text-sm font-semibold text-text-tertiary">
-                명
+                회
               </span>
             </p>
             <p className="mt-1 text-[11px] text-text-tertiary">
-              실시간 티켓팅 참여자
+              실시간·유료 합산
             </p>
           </div>
         </div>

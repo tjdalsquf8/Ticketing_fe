@@ -98,18 +98,11 @@ export default function TicketCard(props: Props) {
   // rankPercentile 이 null (집계 전) 인 경우 "집계 중" 표시
   const isRankPending = ranked && rankNumber !== null && rankPercentile === null;
 
-  // PC 고정 비율(700x220) 디자인을 모바일에서도 그대로 유지 — 필드 재배치 대신
-  // 컨테이너 폭에 맞춰 전체를 통째로 scale down (container query 기반, JS 불필요).
   return (
-    <div className="tr-ticket-frame" style={{ maxWidth: 700 }}>
-      <style>{`
-        .tr-ticket-frame { container-type: inline-size; width: 100%; aspect-ratio: 700 / 220; position: relative; }
-        .tr-ticket-stage { position: absolute; top: 0; left: 0; width: 700px; height: 220px; transform-origin: top left; transform: scale(calc(100cqw / 700px)); }
-      `}</style>
-      <div
-        className="tr-ticket-stage relative flex rounded-2xl overflow-hidden shadow-2xl"
-        style={{ fontFamily: '"Courier New", Courier, monospace' }}
-      >
+    <div
+      className="relative flex w-full rounded-2xl overflow-hidden shadow-2xl"
+      style={{ maxWidth: 700, minHeight: 220, fontFamily: '"Courier New", Courier, monospace' }}
+    >
       {/* 왼쪽 노치 */}
       <div className="absolute left-[calc(38%-10px)] top-0 z-20 flex flex-col justify-between h-full pointer-events-none" style={{ width: 0 }}>
         <div style={{ width: 20, height: 20, borderRadius: '50%', background: notchColor, marginTop: -1, marginLeft: -10 }} />
@@ -166,7 +159,7 @@ export default function TicketCard(props: Props) {
         <div className="space-y-3">
           <div>
             <p style={{ color: '#555', fontSize: 8, fontWeight: 700, letterSpacing: '0.2em' }}>PASSENGER</p>
-            <p className="truncate" style={{ color: '#FFFFFF', fontSize: 22, fontWeight: 900, marginTop: 2 }}>{nickname}</p>
+            <p style={{ color: '#FFFFFF', fontSize: 22, fontWeight: 900, marginTop: 2 }}>{nickname}</p>
           </div>
           <div>
             <p style={{ color: '#555', fontSize: 8, fontWeight: 700, letterSpacing: '0.2em' }}>ISSUED AT</p>
@@ -228,7 +221,6 @@ export default function TicketCard(props: Props) {
           {stub}
         </p>
         <Barcode />
-      </div>
       </div>
     </div>
   );

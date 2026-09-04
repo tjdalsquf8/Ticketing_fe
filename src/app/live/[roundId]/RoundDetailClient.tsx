@@ -456,11 +456,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
           if (err.code === 'ROUND_NOT_OPEN' || err.code === 'ROUND_ALREADY_CLOSED') {
             void loadRound();
           }
-          if (
-            err.code === 'VALIDATION_ERROR' ||
-            err.code === 'NICKNAME_REQUIRED' ||
-            err.code === 'NICKNAME_TAKEN_IN_ROUND'
-          ) {
+          if (err.code === 'VALIDATION_ERROR' || err.code === 'NICKNAME_REQUIRED') {
             setNeedsNickname(true);
             setNicknameError(err.message);
           }

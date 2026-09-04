@@ -102,8 +102,7 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px] text-sm">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
@@ -162,7 +161,6 @@ export default function AdminDashboardPage() {
               )}
             </tbody>
           </table>
-          </div>
         </div>
       </section>
 

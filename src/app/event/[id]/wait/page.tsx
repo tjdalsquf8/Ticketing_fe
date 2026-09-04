@@ -207,7 +207,7 @@ export default function WaitPage({
                   </p>
                 )}
               </div>
-              <div className="flex items-end gap-1 justify-center flex-wrap">
+              <div className="flex items-end gap-1 justify-center">
                 {[
                   { val: cdParts.hh, unit: '시간' },
                   { val: cdParts.mm, unit: '분' },
@@ -215,14 +215,14 @@ export default function WaitPage({
                 ].map(({ val, unit }, i) => (
                   <div key={unit} className="flex items-end gap-1">
                     {i > 0 && (
-                      <span className="text-2xl sm:text-3xl font-light text-text-tertiary mb-1">
+                      <span className="text-3xl font-light text-text-tertiary mb-1">
                         :
                       </span>
                     )}
-                    <div className="text-center min-w-[3rem] sm:min-w-[3.5rem]">
+                    <div className="text-center min-w-[3.5rem]">
                       <span
                         className={[
-                          'font-mono-tabular text-4xl sm:text-5xl font-bold tracking-tight',
+                          'font-mono-tabular text-5xl font-bold tracking-tight',
                           isImminent ? 'text-primary' : 'text-text',
                         ].join(' ')}
                       >

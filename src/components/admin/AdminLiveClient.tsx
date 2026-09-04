@@ -234,14 +234,14 @@ export default function AdminLiveClient() {
       )}
 
       {/* 상태 필터 */}
-      <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+      <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
         {STATUS_FILTERS.map(({ key, label }) => (
           <button
             key={key}
             type="button"
             onClick={() => setFilter(key)}
             className={[
-              'shrink-0 whitespace-nowrap px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors',
+              'px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors',
               key === filter
                 ? 'bg-bg-surface text-text shadow-xs border border-border'
                 : 'text-text-secondary hover:text-text',
@@ -584,7 +584,7 @@ function RoundDetailDrawer({
                 ) : (
                   <ol className="card divide-y divide-border overflow-hidden">
                     {detail.top10.slice(0, MAX_RENDERABLE_TOP_ROWS).map((row) => (
-                      <li key={row.rank} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                      <li key={row.sessionId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                         <span className="w-6 text-center font-mono-tabular font-semibold text-text-secondary">{row.rank}</span>
                         <span className="flex-1 truncate">
                           <span className="font-medium text-text">{row.nickname}</span>

@@ -285,13 +285,12 @@ export default function PracticeClient() {
             </p>
           </div>
 
-          {/* 이벤트 카드 그리드 — 모바일은 가로 스크롤(카드 고정폭이라 확대·화질저하 없음), sm 이상은 3열 그리드 */}
-          <div className="-mx-4 sm:mx-0 px-4 sm:px-0 overflow-x-auto sm:overflow-visible scrollbar-hide">
-          <div className="flex sm:grid sm:grid-cols-3 gap-4 sm:gap-6 pb-1 sm:pb-0 w-max sm:w-auto">
+          {/* 이벤트 카드 그리드 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {PRACTICE_EVENTS.map(event => (
               <div
                 key={event.id}
-                className="group cursor-pointer shrink-0 w-64 sm:w-auto"
+                className="group cursor-pointer"
                 onClick={() => {
                   const { startDay, endDay } = parseEventPeriod(event.period);
                   setSelectedDate(firstWeekendInPeriod(startDay, endDay));
@@ -309,7 +308,7 @@ export default function PracticeClient() {
                     alt={event.title}
                     fill
                     className="object-cover"
-                    sizes="(max-width: 640px) 256px, 33vw"
+                    sizes="(max-width: 640px) 100vw, 33vw"
                   />
                   {/* 하단 페이드 */}
                   <div
@@ -349,7 +348,6 @@ export default function PracticeClient() {
                 </div>
               </div>
             ))}
-          </div>
           </div>
         </div>
       </div>
@@ -483,10 +481,10 @@ export default function PracticeClient() {
         className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60"
         onClick={(e) => { e.stopPropagation(); }}
       >
-        {/* 팝업 창 — 900x680 PC 디자인 기준, 뷰포트가 좁으면(태블릿 등 sm: 구간 포함) 항상 뷰포트에 맞춰 축소 */}
+        {/* 팝업 창 */}
         <div
-          className="flex flex-col rounded-xl overflow-hidden shadow-2xl border border-gray-300 w-[94vw] sm:w-[min(900px,94vw)] h-[88vh] sm:h-[min(680px,88vh)]"
-          style={{ maxWidth: 900, maxHeight: 680, background: '#fff' }}
+          className="flex flex-col rounded-xl overflow-hidden shadow-2xl border border-gray-300"
+          style={{ width: '900px', height: '680px', background: '#fff' }}
         >
           {/* macOS 창 상단 바 */}
           <div className="flex items-center gap-3 px-4 py-2.5 bg-[#ECECEC] border-b border-[#D0D0D0] shrink-0">

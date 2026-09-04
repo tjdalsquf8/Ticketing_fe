@@ -228,13 +228,13 @@ async function TimeBoard({
     <>
       {/* 서브 필터: 모드 + 기간 */}
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+        <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
           {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
             <Link
               key={m}
               href={`/ranking?board=time&mode=${m}&period=${period}`}
               className={[
-                'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                 m === mode
                   ? 'bg-bg-surface text-text shadow-xs border border-border'
                   : 'text-text-secondary hover:text-text',
@@ -245,13 +245,13 @@ async function TimeBoard({
           ))}
         </div>
 
-        <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+        <div className="inline-flex rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
           {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
             <Link
               key={p}
               href={`/ranking?board=time&mode=${mode}&period=${p}${eventId ? `&eventId=${eventId}` : ''}`}
               className={[
-                'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                'px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
                 p === period
                   ? 'bg-bg-surface text-text shadow-xs border border-border'
                   : 'text-text-secondary hover:text-text',
@@ -336,8 +336,8 @@ async function TicketBoard() {
       {/* 안내 */}
       <div className="rounded-lg border border-info-border bg-info-bg px-4 py-3">
         <p className="text-xs text-info-text">
-          이 랭킹은 실시간 이벤트에서 성공 순위 TOP 10에 든 회원에게 지급된 티켓만 집계합니다.
-          유료 이벤트 티켓은 포함되지 않습니다. 게스트는 티켓 지급 대상이 아닙니다.
+          티켓은 실시간·유료 이벤트에서 성공 순위 TOP 10(라이브) / TOP 3(유료)에 든 회원에게 지급됩니다.
+          게스트는 티켓 지급 대상이 아닙니다.
         </p>
       </div>
     </>

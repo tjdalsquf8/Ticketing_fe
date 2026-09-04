@@ -57,18 +57,3 @@
   effect 안에서 직접 `setState`로 리셋하지 말고 `key` prop으로 컴포넌트를 통째로
   리마운트시켜서 우회한다 (`admin/settlements/AdminSettlementsClient.tsx`의
   `IssueGifticonModal` 참고).
-- **반응형 규칙**: 모바일 퍼스트. 클래스에 prefix 없으면 모바일(<640px) 스타일,
-  데스크톱 확장은 `sm:`(640px) 하나로 통일 — `md:`/`lg:`는 3단 이상 그리드처럼 중간
-  브레이크포인트가 실제로 필요할 때만 예외적으로 추가한다.
-  - **컨테이너**: 페이지 루트는 `max-w-{3xl~5xl} mx-auto px-4 sm:px-6 py-8 sm:py-10`
-    패턴 (`EventListClient.tsx` 참고).
-  - **타이포**: 제목류는 `text-2xl sm:text-3xl`(또는 `sm:text-4xl`) 식으로 모바일에서
-    한 단계 작게. 본문은 `text-sm sm:text-base`.
-  - **레이아웃 전환**: 카드/리스트 아이템이 모바일에서 세로 쌓임 → 데스크톱에서 가로 배치는
-    `flex-col sm:flex-row`. 그리드 컬럼 수는 `grid-cols-2 sm:grid-cols-4` 식으로 좁게
-    시작해서 넓힌다.
-  - **간격**: `gap-*`/`space-y-*`/`py-*`도 모바일 값을 먼저 정하고 `sm:`로 넓힌다
-    (예: `space-y-3 sm:space-y-4`).
-  - 터치 타겟(버튼/링크)은 모바일에서 최소 `btn-sm` 이상 유지, 임의로 더 줄이지 않는다.
-  - 새 페이지/컴포넌트 작성 시 이 패턴을 기본으로 따르고, 기존 반응형 미적용 파일을
-    고칠 때도 같은 prefix 체계로 맞춘다 (다른 breakpoint 전략 섞지 않기).
