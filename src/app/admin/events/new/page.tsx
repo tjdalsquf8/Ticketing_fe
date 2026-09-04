@@ -37,8 +37,7 @@ export default function AdminEventNewPage() {
   const [venueId, setVenueId] = useState('');
   const [opensAt, setOpensAt] = useState('');
   const [totalSeats, setTotalSeats] = useState('');
-  const [entryFeePoints, setEntryFeePoints] = useState('500');
-  const [entryFeeTickets, setEntryFeeTickets] = useState('5');
+  const [entryFeePoints, setEntryFeePoints] = useState('10');
   const [prize, setPrize] = useState('');
   const [errors, setErrors] = useState<EventFormErrors>({});
   const [pending, setPending] = useState(false);
@@ -72,7 +71,7 @@ export default function AdminEventNewPage() {
     setSubmitError(null);
     const found = validateEventForm({
       title, category, venueId, opensAt, totalSeats,
-      entryFeePoints, entryFeeTickets, prize,
+      entryFeePoints, prize,
     });
     setErrors(found);
     if (hasErrors(found)) return;
@@ -214,29 +213,18 @@ export default function AdminEventNewPage() {
             </Field>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="참여비 (포인트)" required error={errors.entryFeePoints}>
-              <input
-                type="number"
-                inputMode="numeric"
-                min={LIMITS.entryFeePoints.min}
-                max={LIMITS.entryFeePoints.max}
-                step={1}
-                value={entryFeePoints}
-                onChange={(e) => setEntryFeePoints(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </Field>
-            <Field label="티켓 환산 (표시용)" hint="UI 참고용 · 미저장" error={errors.entryFeeTickets}>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={entryFeeTickets}
-                onChange={(e) => setEntryFeeTickets(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </Field>
-          </div>
+          <Field label="참여비 (티켓)" required error={errors.entryFeePoints}>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={LIMITS.entryFeePoints.min}
+              max={LIMITS.entryFeePoints.max}
+              step={1}
+              value={entryFeePoints}
+              onChange={(e) => setEntryFeePoints(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </Field>
 
           <Field label="상품" required hint="TOP 지급 상품 설명" error={errors.prize}>
             <TextInput
@@ -294,7 +282,7 @@ export default function AdminEventNewPage() {
                 {opensAt ? new Date(opensAt).toLocaleString('ko-KR') : '(오픈 시각 미설정)'}
               </p>
               <p className="text-xs text-primary font-semibold pt-1">
-                참여비 {Number(entryFeePoints || 0).toLocaleString()}P · {prize || '(상품 미입력)'}
+                참여비 {Number(entryFeePoints || 0).toLocaleString()}매 · {prize || '(상품 미입력)'}
               </p>
             </div>
           </div>

@@ -120,12 +120,12 @@ export default function EventCancelModal({
                 자동 환불 합계
               </span>
               <span className="font-mono-tabular text-danger-text">
-                {refundTotal.toLocaleString()}P
+                {refundTotal.toLocaleString()}매
               </span>
             </div>
             {registeredCount > 0 && (
               <p className="text-[11px] text-danger-text/80 pt-1 border-t border-danger-border">
-                확인 즉시 pending 신청자 전원 포인트 자동 환불됩니다.
+                확인 즉시 pending 신청자 전원 티켓 자동 환불됩니다.
               </p>
             )}
           </div>
