@@ -213,7 +213,7 @@ export function getEvent(eventId: number | string) {
   return apiFetch<EventDetail>(`${EVENTS_BASE}/${eventId}`);
 }
 
-/** POST /api/events/:eventId/registrations — 사전 신청 (포인트 차감). */
+/** POST /api/events/:eventId/registrations — 사전 신청 (보유 티켓 차감). */
 export function registerForEvent(eventId: number | string) {
   return apiFetch<Registration>(
     `${EVENTS_BASE}/${eventId}/registrations`,
