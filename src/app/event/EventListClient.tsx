@@ -32,7 +32,7 @@ import { safeHexColor, safeImageUrl } from '@/lib/safe';
 /* ──────────────────────────────────────────
    EventListClient — /event 상단 캘린더 + 하단 리스트
    ─ 실제 API 연동: GET /api/events, /api/events/calendar, /api/events/nearest
-   ─ 참여 신청: POST /api/events/:id/registrations (보유 티켓 사용)
+   ─ 참여 신청: POST /api/events/:id/registrations (500P 결제)
    ────────────────────────────────────────── */
 
 const STATUS_LABEL: Record<EventStatus, { text: string; cls: string }> = {
@@ -184,7 +184,7 @@ export default function EventListClient() {
       <header className="space-y-2">
         <h1 className="text-2xl sm:text-3xl font-bold text-text">유료 이벤트</h1>
         <p className="text-sm text-text-secondary">
-          보유 티켓으로 도전하고, 소요 시간 TOP 3에게 기프티콘이 즉시 지급됩니다.
+          참여비 500P로 도전하고, 소요 시간 TOP 3에게 기프티콘이 즉시 지급됩니다.
         </p>
       </header>
 
@@ -325,7 +325,7 @@ export default function EventListClient() {
                         <div>
                           <p className="text-text-tertiary">참여비</p>
                           <p className="mt-0.5 font-mono-tabular font-semibold text-text">
-                            {ev.entryFeePoints}매
+                            {ev.entryFeePoints}P
                           </p>
                         </div>
                         <div>
@@ -385,7 +385,7 @@ export default function EventListClient() {
                             onClick={() => handleOpenRegistration(ev.eventId)}
                             className="btn btn-solid btn-sm shrink-0"
                           >
-                            참여 신청 ({ev.entryFeePoints}매)
+                            참여 신청 ({ev.entryFeePoints}P)
                           </button>
                         ) : (
                           <Link
@@ -408,8 +408,8 @@ export default function EventListClient() {
       <EventRegistrationModal
         open={!!modalTarget}
         eventTitle={modalTarget?.title ?? ''}
-        entryFeeTickets={modalTarget?.entryFeePoints ?? 0}
-        currentTickets={user?.ticketBalance ?? Number.POSITIVE_INFINITY}
+        entryFeePoints={modalTarget?.entryFeePoints ?? 0}
+        currentPoints={user?.points ?? Number.POSITIVE_INFINITY}
         pending={modalPending}
         errorMessage={modalError}
         onConfirm={handleConfirmRegistration}

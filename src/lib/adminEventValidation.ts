@@ -46,6 +46,7 @@ export const LIMITS = {
   posterInitial:    { min: 0,   max: 8 },
   totalSeats:       { min: 1,   max: 200_000 },
   entryFeePoints:   { min: 0,   max: 10_000 },
+  entryFeeTickets:  { min: 0,   max: 100 },
   // BE 스펙: 이벤트 durationMs 최대 24시간. 폼 UI 아직 없지만 향후 대비.
   durationMs:       { min: 1,   max: 24 * 60 * 60 * 1000 },
   // BE 스펙: 이벤트 취소 사유 최대 500자.
@@ -122,6 +123,7 @@ export interface EventFormValues {
   opensAt: string;
   totalSeats: string;
   entryFeePoints: string;
+  entryFeeTickets: string;
   prize: string;
 }
 
@@ -177,7 +179,10 @@ export function validateEventForm(v: EventFormValues): EventFormErrors {
   }
 
   if (parseIntegerInRange(v.entryFeePoints, LIMITS.entryFeePoints) === null) {
-    errors.entryFeePoints = `참여비(티켓)는 ${LIMITS.entryFeePoints.min}~${LIMITS.entryFeePoints.max.toLocaleString()} 정수여야 합니다.`;
+    errors.entryFeePoints = `참여비(포인트)는 ${LIMITS.entryFeePoints.min}~${LIMITS.entryFeePoints.max.toLocaleString()} 정수여야 합니다.`;
+  }
+  if (parseIntegerInRange(v.entryFeeTickets, LIMITS.entryFeeTickets) === null) {
+    errors.entryFeeTickets = `참여비(티켓)는 ${LIMITS.entryFeeTickets.min}~${LIMITS.entryFeeTickets.max} 정수여야 합니다.`;
   }
   const prize = sanitizeLine(v.prize);
   if (prize.length < LIMITS.prize.min) {

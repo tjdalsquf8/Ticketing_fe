@@ -66,6 +66,7 @@ export default function AdminEventEditPage({
   const [opensAt, setOpensAt] = useState('');
   const [totalSeats, setTotalSeats] = useState('');
   const [entryFeePoints, setEntryFeePoints] = useState('500');
+  const [entryFeeTickets, setEntryFeeTickets] = useState('5');
   const [prize, setPrize] = useState('');
   const [posterColor, setPosterColor] = useState('#1E3A8A');
   const [posterInitial, setPosterInitial] = useState('');
@@ -126,7 +127,7 @@ export default function AdminEventEditPage({
     if (!event) return;
     const found = validateEventForm({
       title, category, venueId, opensAt, totalSeats,
-      entryFeePoints, prize,
+      entryFeePoints, entryFeeTickets, prize,
     });
     if (opensAt === toDatetimeLocal(event.opensAt)) delete found.opensAt;
     setErrors(found);
@@ -336,18 +337,32 @@ export default function AdminEventEditPage({
             </Field>
           </div>
 
-          <Field label="참여비 (티켓)" required error={errors.entryFeePoints}>
-            <input
-              type="number"
-              min={LIMITS.entryFeePoints.min}
-              max={LIMITS.entryFeePoints.max}
-              step={1}
-              value={entryFeePoints}
-              onChange={(e) => setEntryFeePoints(e.target.value)}
-              disabled={status === 'open' || isReadOnly}
-              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle"
-            />
-          </Field>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="참여비 (포인트)" required error={errors.entryFeePoints}>
+              <input
+                type="number"
+                min={LIMITS.entryFeePoints.min}
+                max={LIMITS.entryFeePoints.max}
+                step={1}
+                value={entryFeePoints}
+                onChange={(e) => setEntryFeePoints(e.target.value)}
+                disabled={status === 'open' || isReadOnly}
+                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle"
+              />
+            </Field>
+            <Field label="티켓 환산 (표시용)" hint="UI 참고용 · 미저장">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={LIMITS.entryFeeTickets.min}
+                max={LIMITS.entryFeeTickets.max}
+                step={1}
+                value={entryFeeTickets}
+                onChange={(e) => setEntryFeeTickets(e.target.value)}
+                className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </Field>
+          </div>
 
           <Field label="상품" required error={errors.prize}>
             <TextInput value={prize} onChange={setPrize} maxLength={LIMITS.prize.max} />

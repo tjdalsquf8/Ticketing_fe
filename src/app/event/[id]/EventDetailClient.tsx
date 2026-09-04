@@ -23,7 +23,7 @@ import { safeHexColor, safeImageUrl } from '@/lib/safe';
    /event/[id] — 이벤트 상세 (클라이언트)
    ─ GET /api/events/:id (로그인 시 myRegistration 포함)
    ─ 상태: scheduled → 신청 필요 · 오픈 대기 · 티켓팅 참여
-   ─ 액션: 신청(보유 티켓 차감) · 취소(전액 환불) · 티켓팅 진입
+   ─ 액션: 신청(포인트 차감) · 취소(전액 환불) · 티켓팅 진입
    ────────────────────────────────────────── */
 
 interface EventDetailClientProps {
@@ -81,7 +81,6 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-
 
   const opensAtMs = event ? Date.parse(event.opensAt) : 0;
   const remainingMs = Math.max(0, opensAtMs - nowMs);
@@ -159,7 +158,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     if (!event || cancelPending) return;
     const deadlineText = formatKstDateTime(event.registrationDeadline);
     const ok = window.confirm(
-      `신청을 취소하고 참여비(티켓)를 환불받으시겠어요? 환불은 신청 마감 시각(${deadlineText})까지만 가능합니다.`,
+      `신청을 취소하고 참여비를 환불받으시겠어요? 환불은 신청 마감 시각(${deadlineText})까지만 가능합니다.`,
     );
     if (!ok) return;
     setCancelPending(true);
@@ -272,7 +271,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
       label: '참여비',
       value: (
         <span className="font-mono-tabular">
-          {event.entryFeePoints.toLocaleString()}매
+          {event.entryFeePoints.toLocaleString()}P
         </span>
       ),
     },
@@ -351,7 +350,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     }
     if (isCancelled) return '취소된 이벤트입니다.';
     if (isClosed) return '종료된 이벤트입니다.';
-    if (!user) return '로그인 후 보유 티켓으로 참여 신청할 수 있습니다.';
+    if (!user) return '로그인 후 참여비를 결제하고 신청할 수 있습니다.';
     return `참여비는 신청 마감 시각(${deadlineText}) 전까지 전액 환불됩니다.`;
   })();
 
@@ -375,9 +374,9 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
         ctaLabel={
           isRegistered
             ? undefined
-            : `참여 신청 (${event.entryFeePoints.toLocaleString()}매)`
+            : `참여 신청 (${event.entryFeePoints.toLocaleString()}P)`
         }
-        entryFeeLabel={`참여비 ${event.entryFeePoints.toLocaleString()}매`}
+        entryFeeLabel={`참여비 ${event.entryFeePoints.toLocaleString()}P`}
         backHref="/event"
         backLabel="← 이벤트 목록"
         ctaFootnote={ctaFootnote}
@@ -386,8 +385,8 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
       <EventRegistrationModal
         open={modalOpen}
         eventTitle={event.title}
-        entryFeeTickets={event.entryFeePoints}
-        currentTickets={user?.ticketBalance ?? Number.POSITIVE_INFINITY}
+        entryFeePoints={event.entryFeePoints}
+        currentPoints={user?.points ?? Number.POSITIVE_INFINITY}
         pending={modalPending}
         errorMessage={modalError}
         onConfirm={handleConfirmRegister}

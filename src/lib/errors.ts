@@ -92,7 +92,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   REGISTRATION_CLOSED: "신청이 마감되었습니다.",
   REGISTRATION_NOT_FOUND: "신청 내역을 찾을 수 없습니다.",
   CANCEL_NOT_ALLOWED: "오픈 이후에는 신청을 취소할 수 없습니다.",
-  INSUFFICIENT_TICKETS: "보유 티켓이 부족합니다.",
+  INSUFFICIENT_POINTS: "포인트가 부족합니다.",
   RECURRENCE_INVALID: "반복 설정이 올바르지 않습니다.",
   VENUE_NOT_FOUND: "해당 공연장을 찾을 수 없습니다.",
   INVALID_SEAT_LABEL: "좌석 라벨 형식이 올바르지 않습니다.",

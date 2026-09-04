@@ -33,12 +33,6 @@ interface User {
    * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
    */
   points?: number;
-  /**
-   * 보유 티켓 개수. `GET /users/me` 응답의 `ticketBalance` 필드.
-   * 티켓팅 TOP10 성공 시 +1, 이벤트 참여 신청 시 entryFeePoints 만큼 차감, 취소 시 환불.
-   * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
-   */
-  ticketBalance?: number;
 }
 
 interface AuthContextValue {
@@ -140,7 +134,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 name?: string;
                 role?: 'user' | 'admin';
                 points?: number | string;
-                ticketBalance?: number | string;
               };
               if (raw.id !== undefined && raw.email && raw.name) {
                 const parsedPoints =
@@ -149,12 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     : typeof raw.points === 'string' && raw.points !== ''
                       ? Number(raw.points)
                       : undefined;
-                const parsedTicketBalance =
-                  typeof raw.ticketBalance === 'number'
-                    ? raw.ticketBalance
-                    : typeof raw.ticketBalance === 'string' && raw.ticketBalance !== ''
-                      ? Number(raw.ticketBalance)
-                      : undefined;
                 const verified: User = {
                   id: String(raw.id),
                   email: raw.email,
@@ -162,9 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   ...(raw.role ? { role: raw.role } : {}),
                   ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
                     ? { points: parsedPoints }
-                    : {}),
-                  ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
-                    ? { ticketBalance: parsedTicketBalance }
                     : {}),
                 };
                 setUser(verified);
@@ -316,7 +300,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name?: string;
         role?: 'user' | 'admin';
         points?: number | string;
-        ticketBalance?: number | string;
       }>(ROUTES.users.me);
       if (raw.id === undefined || !raw.email || !raw.name) return;
       const parsedPoints =
@@ -325,12 +308,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : typeof raw.points === 'string' && raw.points !== ''
             ? Number(raw.points)
             : undefined;
-      const parsedTicketBalance =
-        typeof raw.ticketBalance === 'number'
-          ? raw.ticketBalance
-          : typeof raw.ticketBalance === 'string' && raw.ticketBalance !== ''
-            ? Number(raw.ticketBalance)
-            : undefined;
       const verified: User = {
         id: String(raw.id),
         email: raw.email,
@@ -338,9 +315,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...(raw.role ? { role: raw.role } : {}),
         ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
           ? { points: parsedPoints }
-          : {}),
-        ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
-          ? { ticketBalance: parsedTicketBalance }
           : {}),
       };
       setUser(verified);

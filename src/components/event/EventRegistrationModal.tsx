@@ -5,14 +5,15 @@ import { useEffect, useRef } from 'react';
 
 /* ──────────────────────────────────────────
    EventRegistrationModal
-   ─ 유료 이벤트 참여 신청 확인 (보유 티켓 사용)
+   ─ 유료 이벤트 참여 신청 확인 (500P 결제)
+   ─ 실제 결제 API 미연결. 부모가 mock 처리
    ────────────────────────────────────────── */
 
 interface Props {
   open: boolean;
   eventTitle: string;
-  entryFeeTickets: number;
-  currentTickets: number;
+  entryFeePoints: number;
+  currentPoints: number;
   pending?: boolean;
   errorMessage?: string | null;
   onConfirm: () => void;
@@ -22,8 +23,8 @@ interface Props {
 export default function EventRegistrationModal({
   open,
   eventTitle,
-  entryFeeTickets,
-  currentTickets,
+  entryFeePoints,
+  currentPoints,
   pending = false,
   errorMessage = null,
   onConfirm,
@@ -32,8 +33,8 @@ export default function EventRegistrationModal({
   const confirmRef = useRef<HTMLButtonElement>(null);
   const chargeRef = useRef<HTMLAnchorElement>(null);
 
-  const insufficient = currentTickets < entryFeeTickets;
-  const remaining = currentTickets - entryFeeTickets;
+  const insufficient = currentPoints < entryFeePoints;
+  const remaining = currentPoints - entryFeePoints;
 
   // ESC 닫기 + body 스크롤 잠금
   useEffect(() => {
@@ -91,7 +92,7 @@ export default function EventRegistrationModal({
         {/* 헤더 */}
         <div className="p-5 border-b border-border">
           <p className="text-[11px] font-semibold text-primary tracking-wider uppercase">
-            티켓 사용
+            포인트 결제
           </p>
           <h3 className="mt-1 text-lg font-bold text-text">참여 신청 확인</h3>
         </div>
@@ -110,50 +111,50 @@ export default function EventRegistrationModal({
           <div className="rounded-xl border border-primary-border bg-primary-subtle p-4 flex items-center justify-between">
             <span className="text-sm font-semibold text-text">참여비</span>
             <span className="text-2xl font-black font-mono-tabular text-primary">
-              -{entryFeeTickets.toLocaleString()}매
+              -{entryFeePoints.toLocaleString()}P
             </span>
           </div>
 
-          {/* 잔여 티켓 변동 */}
+          {/* 잔액 변동 */}
           <div className="rounded-lg border border-border bg-bg-subtle p-3 space-y-1.5">
             <div className="flex justify-between">
-              <span className="text-text-tertiary text-xs">보유 티켓</span>
+              <span className="text-text-tertiary text-xs">현재 잔액</span>
               <span className="font-mono-tabular text-text">
-                {currentTickets.toLocaleString()}매
+                {currentPoints.toLocaleString()}P
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-text-tertiary text-xs">신청 후 잔여 티켓</span>
+              <span className="text-text-tertiary text-xs">결제 후 잔액</span>
               <span
                 className={[
                   'font-mono-tabular font-semibold',
                   insufficient ? 'text-danger-text' : 'text-text',
                 ].join(' ')}
               >
-                {remaining.toLocaleString()}매
+                {remaining.toLocaleString()}P
               </span>
             </div>
           </div>
 
-          {/* 잔여 티켓 부족 경고 */}
+          {/* 잔액 부족 경고 */}
           {insufficient && (
             <div
               role="alert"
               className="rounded-lg border border-danger-border bg-danger-bg p-3 space-y-2"
             >
               <p className="text-sm font-semibold text-danger-text">
-                보유 티켓이 부족합니다
+                포인트가 부족합니다
               </p>
               <p className="text-xs text-danger-text/80">
-                참여비 {entryFeeTickets.toLocaleString()}매를 내려면 실시간 티켓팅에 참여해 티켓을 모아주세요.
+                참여비 {entryFeePoints.toLocaleString()}P 결제를 위해 포인트를 충전해 주세요.
               </p>
               <Link
                 ref={chargeRef}
-                href="/live"
+                href="/my/points"
                 className="btn btn-outline btn-sm w-full mt-1"
                 onClick={onClose}
               >
-                실시간 티켓팅 참여하러 가기
+                포인트 충전하러 가기
               </Link>
             </div>
           )}
@@ -210,7 +211,7 @@ export default function EventRegistrationModal({
                 />
               </svg>
             ) : (
-              `${entryFeeTickets.toLocaleString()}매 사용하고 신청`
+              `${entryFeePoints.toLocaleString()}P 결제하고 신청`
             )}
           </button>
         </div>
