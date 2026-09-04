@@ -28,12 +28,6 @@ interface User {
    */
   role?: 'user' | 'admin';
   /**
-   * 보유 포인트. `GET /users/me` 응답에 `points` 필드가 있으면 반영.
-   * BE 미구현 시 undefined → UI 는 "-" 표시.
-   * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
-   */
-  points?: number;
-  /**
    * 보유 티켓 개수. `GET /users/me` 응답의 `ticketBalance` 필드.
    * 티켓팅 TOP10 성공 시 +1, 이벤트 참여 신청 시 entryFeePoints 만큼 차감, 취소 시 환불.
    * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
@@ -61,7 +55,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** GET /users/me 재요청 후 user state 갱신. 포인트 변동(신청·환불·충전) 후 호출. */
+  /** GET /users/me 재요청 후 user state 갱신. 티켓 잔액 변동(신청·환불) 후 호출. */
   refreshMe: () => Promise<void>;
 }
 
@@ -139,16 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email?: string;
                 name?: string;
                 role?: 'user' | 'admin';
-                points?: number | string;
                 ticketBalance?: number | string;
               };
               if (raw.id !== undefined && raw.email && raw.name) {
-                const parsedPoints =
-                  typeof raw.points === 'number'
-                    ? raw.points
-                    : typeof raw.points === 'string' && raw.points !== ''
-                      ? Number(raw.points)
-                      : undefined;
                 const parsedTicketBalance =
                   typeof raw.ticketBalance === 'number'
                     ? raw.ticketBalance
@@ -160,9 +147,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   email: raw.email,
                   name: raw.name,
                   ...(raw.role ? { role: raw.role } : {}),
-                  ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
-                    ? { points: parsedPoints }
-                    : {}),
                   ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
                     ? { ticketBalance: parsedTicketBalance }
                     : {}),
@@ -315,16 +299,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email?: string;
         name?: string;
         role?: 'user' | 'admin';
-        points?: number | string;
         ticketBalance?: number | string;
       }>(ROUTES.users.me);
       if (raw.id === undefined || !raw.email || !raw.name) return;
-      const parsedPoints =
-        typeof raw.points === 'number'
-          ? raw.points
-          : typeof raw.points === 'string' && raw.points !== ''
-            ? Number(raw.points)
-            : undefined;
       const parsedTicketBalance =
         typeof raw.ticketBalance === 'number'
           ? raw.ticketBalance
@@ -336,9 +313,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: raw.email,
         name: raw.name,
         ...(raw.role ? { role: raw.role } : {}),
-        ...(parsedPoints !== undefined && Number.isFinite(parsedPoints)
-          ? { points: parsedPoints }
-          : {}),
         ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
           ? { ticketBalance: parsedTicketBalance }
           : {}),
@@ -361,7 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
     setUser(userInfo);
 
-    // login 응답에는 points 가 없을 수 있으므로 users/me 로 최신 잔액 fetch.
+    // login 응답에는 ticketBalance 가 없을 수 있으므로 users/me 로 최신 잔액 fetch.
     refreshMe();
   }, [refreshMe]);
 

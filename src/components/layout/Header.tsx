@@ -92,16 +92,6 @@ export default function Header() {
           <div className="hidden sm:flex items-center gap-2">
             {user ? (
               <>
-                <Link
-                  href="/my/points"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-primary-subtle border border-primary-border text-xs font-semibold text-primary hover:bg-primary-subtle/70 transition-colors"
-                  title="포인트 충전"
-                >
-                  <span className="font-mono-tabular">
-                    {user.points !== undefined ? user.points.toLocaleString() : '-'}
-                  </span>
-                  <span>P</span>
-                </Link>
                 <Link href="/my" className="btn btn-neutral btn-sm">
                   마이페이지
                 </Link>
@@ -148,15 +138,6 @@ export default function Header() {
           <div className="my-1.5 border-t border-border" />
           {user ? (
             <>
-              <Link
-                href="/my/points"
-                className="flex items-center justify-between px-2 py-2.5 rounded-md text-sm font-medium text-text-secondary hover:text-text hover:bg-bg-subtle"
-              >
-                <span>포인트</span>
-                <span className="font-mono-tabular text-primary font-semibold">
-                  {user.points !== undefined ? user.points.toLocaleString() : '-'}P
-                </span>
-              </Link>
               <Link
                 href="/my"
                 className="block px-2 py-2.5 rounded-md text-sm font-medium text-text-secondary hover:text-text hover:bg-bg-subtle"

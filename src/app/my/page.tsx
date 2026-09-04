@@ -102,45 +102,22 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 통계 스탯 — 누적 티켓 / 포인트 */}
-        <div className="grid grid-cols-2 gap-3">
-          <Link
-            href="/my/tickets"
-            className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
-          >
-            <p className="text-xs text-text-secondary flex items-center justify-between">
-              <span>누적 티켓</span>
-              <span className="text-primary text-sm leading-none">›</span>
-            </p>
-            <p className="mt-1 font-mono-tabular">
-              <strong className="text-2xl text-text">
-                {ticketCount ?? '—'}
-              </strong>
-              <span className="text-sm text-text-tertiary ml-1">매</span>
-            </p>
-          </Link>
-          <Link
-            href="/my/points"
-            className="rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
-          >
-            <p className="text-xs text-text-secondary flex items-center justify-between">
-              <span>보유 포인트</span>
-              <span className="text-primary text-sm leading-none">›</span>
-            </p>
-            <p className="mt-1 font-mono-tabular">
-              {typeof user?.points === 'number' ? (
-                <>
-                  <strong className="text-2xl text-text">
-                    {user.points.toLocaleString()}
-                  </strong>
-                  <span className="text-sm text-text-tertiary ml-1">P</span>
-                </>
-              ) : (
-                <span className="text-sm text-text-tertiary">—</span>
-              )}
-            </p>
-          </Link>
-        </div>
+        {/* 통계 스탯 — 누적 티켓 */}
+        <Link
+          href="/my/tickets"
+          className="block rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
+        >
+          <p className="text-xs text-text-secondary flex items-center justify-between">
+            <span>누적 티켓</span>
+            <span className="text-primary text-sm leading-none">›</span>
+          </p>
+          <p className="mt-1 font-mono-tabular">
+            <strong className="text-2xl text-text">
+              {ticketCount ?? '—'}
+            </strong>
+            <span className="text-sm text-text-tertiary ml-1">매</span>
+          </p>
+        </Link>
 
         {/* 관리자 진입 — role=admin 전용. UI 은닉이며 최종 인가는 백엔드 requireAdmin이 담당. */}
         {isAdmin && (
@@ -201,7 +178,7 @@ export default function MyPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-3 text-right font-mono-tabular text-text-secondary">
-                        {r.pointsPaid.toLocaleString()}P
+                        {typeof r.pointsPaid === 'number' ? `${r.pointsPaid.toLocaleString()}매` : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`badge ${st.cls}`}>{st.text}</span>
