@@ -153,3 +153,15 @@ export function runAdminLiveCron(
     body,
   });
 }
+
+// ── 테스트용 즉시 생성 (임시) ─────────────────────────
+//
+// 매시 정각까지 기다리지 않고 지금 시각 기준으로 라운드를 바로 여는 테스트 escape hatch.
+// 테스트 끝나면 이 함수 + FE 버튼 제거 대상.
+
+/** POST /api/admin/live/rounds/create-now — 지금 시각 기준 라운드 즉시 생성(테스트용). */
+export function createRoundNow() {
+  return apiFetch<LiveRound>(ROUTES.admin.liveRoundCreateNow, {
+    method: 'POST',
+  });
+}

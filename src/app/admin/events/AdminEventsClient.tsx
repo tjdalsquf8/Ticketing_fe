@@ -128,7 +128,7 @@ export default function AdminEventsClient() {
         <div>
           <h1 className="text-2xl font-bold text-text">이벤트 관리</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            관리자가 수동으로 여는 유료·특별 이벤트를 관리합니다.
+            관리자가 수동으로 여는 특별 이벤트를 관리합니다.
           </p>
           <p className="mt-1 text-xs text-text-tertiary">
             매시 정각 자동 오픈되는 실시간 회차는{' '}
@@ -288,7 +288,6 @@ export default function AdminEventsClient() {
         open={!!cancelTarget}
         eventTitle={cancelTarget?.title ?? ''}
         registeredCount={cancelTarget?.registeredCount ?? 0}
-        entryFeePoints={cancelTarget?.entryFeePoints ?? 0}
         pending={cancelPending}
         errorMessage={cancelError}
         onConfirm={handleConfirmCancel}

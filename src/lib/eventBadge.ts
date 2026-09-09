@@ -21,7 +21,7 @@ export function myRegistrationBadge(
 
   switch (regStatus) {
     case "ticketed":
-      return { text: "티켓 발급 완료", cls: "badge-success" };
+      return { text: "당첨", cls: "badge-success" };
     case "no_show":
       return { text: "참여 실패", cls: "badge-neutral" };
     case "missed":

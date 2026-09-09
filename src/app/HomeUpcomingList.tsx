@@ -8,7 +8,7 @@ import { getAdminVenueOption } from '@/data/live';
 import { safeHexColor, safeImageUrl } from '@/lib/safe';
 
 /* ──────────────────────────────────────────
-   다가오는 유료 이벤트 — 소형 사이드 위젯
+   다가오는 이벤트 — 소형 사이드 위젯
    ─ HomeLiveHero 우측 칼럼(데스크톱) / 히어로 아래(모바일)에 붙는다.
    ─ listEvents({ status:'scheduled', limit:2 }) — 실시간과 헷갈리지 않게 최소 정보만.
    ────────────────────────────────────────── */
@@ -61,9 +61,6 @@ export default function HomeUpcomingList() {
     <div className="card p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-bold text-text-secondary">
-          <span className="px-1.5 py-0.5 rounded bg-warning-bg text-warning-text text-[10px] font-bold tracking-wide">
-            유료
-          </span>
           다가오는 이벤트
         </p>
         <Link

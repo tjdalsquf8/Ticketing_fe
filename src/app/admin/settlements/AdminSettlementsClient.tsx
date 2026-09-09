@@ -13,7 +13,7 @@ import { formatKstDateTime } from '@/lib/kst';
 
 /* ──────────────────────────────────────────
    /admin/settlements — 기프티콘 정산 이력 (실 API)
-   ─ 유료 이벤트 TOP 3 당첨자별 지급 상태만 추적 (티켓 정산은 드롭)
+   ─ 이벤트 TOP 3 당첨자별 지급 상태만 추적 (티켓 정산은 드롭)
    ─ GET /admin/settlements/gifticons — TOP3는 BE가 tickets 테이블에서 즉석 계산,
      pending row는 DB에 없고 조회 시점에 합쳐서 내려옴
    ─ POST /admin/settlements/gifticons/:id/issue — 재고 1건 배정 = 지급 완료
@@ -100,7 +100,7 @@ export default function AdminSettlementsClient() {
       <div>
         <h1 className="text-2xl font-bold text-text">정산 이력</h1>
         <p className="mt-1 text-sm text-text-secondary">
-          유료 이벤트 TOP 3 당첨자별 기프티콘 지급 현황입니다.
+          이벤트 TOP 3 당첨자별 기프티콘 지급 현황입니다.
         </p>
       </div>
 

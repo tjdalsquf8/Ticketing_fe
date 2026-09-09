@@ -27,12 +27,6 @@ interface User {
    * FE는 UI 노출 통제 목적으로만 사용한다.
    */
   role?: 'user' | 'admin';
-  /**
-   * 보유 티켓 개수. `GET /users/me` 응답의 `ticketBalance` 필드.
-   * 티켓팅 TOP10 성공 시 +1, 이벤트 참여 신청 시 entryFeePoints 만큼 차감, 취소 시 환불.
-   * 이벤트 신청·환불 후 `refreshMe()` 로 재조회 필요.
-   */
-  ticketBalance?: number;
 }
 
 interface AuthContextValue {
@@ -55,7 +49,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
-  /** GET /users/me 재요청 후 user state 갱신. 티켓 잔액 변동(신청·환불) 후 호출. */
+  /** GET /users/me 재요청 후 user state 갱신. */
   refreshMe: () => Promise<void>;
 }
 
@@ -95,8 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // 로그인 상태로 하이드레이션됐다면 accessToken 유효성을 서버에 1회 확인한다.
       // accessToken(쿠키)는 1시간 만료이지만 localStorage.auth_user는 만료 개념이 없어
-      // UI만 로그인 상태를 유지한 채 API가 게스트로 처리되는 오분기(예: 라이브 세션 시작
-      // → confirm 시 ticketId 미발급 → "티켓 놓쳤어요")를 막기 위함.
+      // UI만 로그인 상태를 유지한 채 API가 게스트로 처리되는 오분기를 막기 위함.
       //
       // apiFetch를 쓰지 않는 이유: refresh 실패 시 `forceLogout()`이 `/login`으로
       // 강제 리다이렉트하는데, 초기 부팅 검증에서는 조용히 로그아웃 상태로만
@@ -133,23 +126,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email?: string;
                 name?: string;
                 role?: 'user' | 'admin';
-                ticketBalance?: number | string;
               };
               if (raw.id !== undefined && raw.email && raw.name) {
-                const parsedTicketBalance =
-                  typeof raw.ticketBalance === 'number'
-                    ? raw.ticketBalance
-                    : typeof raw.ticketBalance === 'string' && raw.ticketBalance !== ''
-                      ? Number(raw.ticketBalance)
-                      : undefined;
                 const verified: User = {
                   id: String(raw.id),
                   email: raw.email,
                   name: raw.name,
                   ...(raw.role ? { role: raw.role } : {}),
-                  ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
-                    ? { ticketBalance: parsedTicketBalance }
-                    : {}),
                 };
                 setUser(verified);
                 localStorage.setItem(USER_KEY, JSON.stringify(verified));
@@ -299,23 +282,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email?: string;
         name?: string;
         role?: 'user' | 'admin';
-        ticketBalance?: number | string;
       }>(ROUTES.users.me);
       if (raw.id === undefined || !raw.email || !raw.name) return;
-      const parsedTicketBalance =
-        typeof raw.ticketBalance === 'number'
-          ? raw.ticketBalance
-          : typeof raw.ticketBalance === 'string' && raw.ticketBalance !== ''
-            ? Number(raw.ticketBalance)
-            : undefined;
       const verified: User = {
         id: String(raw.id),
         email: raw.email,
         name: raw.name,
         ...(raw.role ? { role: raw.role } : {}),
-        ...(parsedTicketBalance !== undefined && Number.isFinite(parsedTicketBalance)
-          ? { ticketBalance: parsedTicketBalance }
-          : {}),
       };
       setUser(verified);
       localStorage.setItem(USER_KEY, JSON.stringify(verified));
@@ -334,10 +307,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 지우면 login→logout 사이클로 쿨다운을 리셋하는 우회가 가능해짐.
     localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
     setUser(userInfo);
-
-    // login 응답에는 ticketBalance 가 없을 수 있으므로 users/me 로 최신 잔액 fetch.
-    refreshMe();
-  }, [refreshMe]);
+  }, []);
 
   const signup = useCallback(
     async (email: string, password: string, name: string) => {

@@ -3,12 +3,11 @@ import Link from 'next/link';
 import { ROUTES } from '@/lib/api';
 import { PRACTICE_EVENTS } from '@/data/practice';
 import RankingRows from '@/components/ranking/RankingRows';
-import TicketRankingRows from '@/components/ranking/TicketRankingRows';
 import LatestEventBoard from '@/components/ranking/LatestEventBoard';
 
 export const metadata: Metadata = { title: '랭킹' };
 
-type Board = 'time' | 'tickets' | 'latest-event';
+type Board = 'time' | 'latest-event';
 type Mode = 'practice' | 'live';
 type Period = 'daily' | 'weekly' | 'monthly';
 
@@ -17,12 +16,6 @@ type RankEntry = {
   nickname: string;
   best_ms: number;
   is_verified: boolean;
-};
-
-type TicketEntry = {
-  rank: number;
-  nickname: string;
-  tickets: number;
 };
 
 function parsePositiveInt(
@@ -38,7 +31,6 @@ function parsePositiveInt(
 
 const BOARD_LABELS: Record<Board, string> = {
   time: '소요 시간',
-  tickets: '티켓 누적',
   'latest-event': '최근 이벤트',
 };
 
@@ -55,7 +47,6 @@ const PERIOD_LABELS: Record<Period, string> = {
 
 const BOARD_DESCRIPTION: Record<Board, string> = {
   time: '소요 시간이 빠른 순으로 정렬됩니다.',
-  tickets: '누적 티켓 수 기준 회원 순위입니다 (게스트 제외).',
   'latest-event': '가장 최근에 종료된 이벤트의 참여자 순위입니다.',
 };
 
@@ -111,43 +102,6 @@ async function fetchTimeRankings(mode: Mode, period: Period, eventId?: number): 
   }
 }
 
-function normalizeTicketEntry(v: unknown): TicketEntry | null {
-  if (!v || typeof v !== 'object') return null;
-  const e = v as Record<string, unknown>;
-  const rank = toFiniteNumber(e.rank);
-  const tickets = toFiniteNumber(e.ticketCount);
-  if (rank === null || tickets === null || typeof e.nickname !== 'string') return null;
-  return { rank, nickname: e.nickname, tickets };
-}
-
-async function fetchTicketRankings(): Promise<TicketEntry[]> {
-  const qs = new URLSearchParams({ mode: 'ticket', page: '1', size: '20' });
-  const url = `${ROUTES.rankings}?${qs.toString()}`;
-
-  try {
-    const res = await fetch(url, {
-      cache: 'no-store',
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error(`[ranking] ticket fetch failed: ${res.status} ${res.statusText}`);
-      }
-      return [];
-    }
-    const json = (await res.json()) as { success?: boolean; data?: unknown };
-    if (!Array.isArray(json.data)) return [];
-    return json.data
-      .map(normalizeTicketEntry)
-      .filter((e): e is TicketEntry => e !== null);
-  } catch (e) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('[ranking] ticket fetch error:', e);
-    }
-    return [];
-  }
-}
-
 export default async function RankingPage({
   searchParams,
 }: {
@@ -159,12 +113,7 @@ export default async function RankingPage({
   }>;
 }) {
   const params = await searchParams;
-  const board: Board =
-    params.board === 'tickets'
-      ? 'tickets'
-      : params.board === 'latest-event'
-        ? 'latest-event'
-        : 'time';
+  const board: Board = params.board === 'latest-event' ? 'latest-event' : 'time';
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 space-y-8">
@@ -197,8 +146,6 @@ export default async function RankingPage({
 
       {board === 'time' ? (
         <TimeBoard params={params} />
-      ) : board === 'tickets' ? (
-        <TicketBoard />
       ) : (
         <LatestEventBoard />
       )}
@@ -310,36 +257,3 @@ async function TimeBoard({
   );
 }
 
-// ── 티켓 누적 보드 ─────────────────────────────────────
-
-async function TicketBoard() {
-  const rankings = await fetchTicketRankings();
-
-  return (
-    <>
-      {/* 테이블 */}
-      <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-bg-subtle">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">티켓</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            <TicketRankingRows rankings={rankings} />
-          </tbody>
-        </table>
-      </div>
-
-      {/* 안내 */}
-      <div className="rounded-lg border border-info-border bg-info-bg px-4 py-3">
-        <p className="text-xs text-info-text">
-          이 랭킹은 실시간 이벤트에서 성공 순위 TOP 10에 든 회원에게 지급된 티켓만 집계합니다.
-          유료 이벤트 티켓은 포함되지 않습니다. 게스트는 티켓 지급 대상이 아닙니다.
-        </p>
-      </div>
-    </>
-  );
-}

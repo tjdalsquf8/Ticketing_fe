@@ -3,7 +3,7 @@ import Link from 'next/link';
 /* ──────────────────────────────────────────
    HomeModesIntro — 3가지 모드 소개 (비대칭 bento)
    ─ 좌: 실시간(오렌지) — 큰 강조 카드
-   ─ 우: 연습(블루) / 유료 이벤트(딥 뉴트럴) — 세로 스택
+   ─ 우: 연습(블루) / 이벤트(딥 뉴트럴) — 세로 스택
    ─ 색 계층: primary → info → neutral-dark 순으로 시선 유도
    ────────────────────────────────────────── */
 
@@ -131,7 +131,7 @@ export default function HomeModesIntro() {
           </div>
         </article>
 
-        {/* ── 우: 연습 + 유료 이벤트 세로 스택 ── */}
+        {/* ── 우: 연습 + 이벤트 세로 스택 ── */}
         <div className="md:col-span-2 grid grid-cols-1 gap-4">
           {/* PRACTICE (인포 블루) */}
           <article
@@ -221,19 +221,19 @@ export default function HomeModesIntro() {
                     color: '#0F172A',
                   }}
                 >
-                  사전 신청 · 유료
+                  사전 신청 · 무료
                 </span>
               </div>
               <div className="space-y-1">
                 <h3 className="text-lg font-bold" style={{ color: '#FFFFFF' }}>
-                  유료 이벤트
+                  이벤트
                 </h3>
                 <p
                   className="text-xs leading-relaxed"
                   style={{ color: '#CBD5E1' }}
                 >
-                  드물게 열리는 대형 이벤트. 참여비로 사전 신청한 사람만
-                  참여합니다.
+                  드물게 열리는 대형 이벤트. 로그인 후 무료로 사전 신청한
+                  사람만 참여합니다.
                 </p>
               </div>
               <Link

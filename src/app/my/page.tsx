@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch, ROUTES } from '@/lib/api';
-import { getMyTickets } from '@/lib/tickets';
 import {
   listMyEventRegistrations,
   type MyEventRegistration,
@@ -21,7 +20,7 @@ interface UserProfile {
 const REG_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: '신청 완료', cls: 'badge-info' },
   entered: { text: '참여함', cls: 'badge-primary' },
-  ticketed: { text: '티켓 발급 완료', cls: 'badge-success' },
+  ticketed: { text: '당첨', cls: 'badge-success' },
   missed: { text: '미참여', cls: 'badge-neutral' },
   no_show: { text: '참여 실패', cls: 'badge-neutral' },
   cancelled: { text: '취소됨', cls: 'badge-neutral' },
@@ -34,9 +33,6 @@ export default function MyPage() {
   const [profile, setProfile]   = useState<UserProfile | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  // 누적 티켓 수는 GET /api/tickets/me 응답의 meta.totalCount 로 확인.
-  // size=1 로 페이로드 최소화 (실제 티켓 목록은 /my/tickets 에서 별도 조회).
-  const [ticketCount, setTicketCount] = useState<number | null>(null);
   const [registrations, setRegistrations] = useState<MyEventRegistration[] | null>(null);
 
   useEffect(() => {
@@ -44,21 +40,6 @@ export default function MyPage() {
       .then(setProfile)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : '정보를 불러올 수 없습니다.'))
       .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    getMyTickets({ page: 1, limit: 1 })
-      .then(({ meta }) => {
-        if (!alive) return;
-        setTicketCount(meta?.totalCount ?? 0);
-      })
-      .catch(() => {
-        // 미로그인·네트워크 실패 등 조용히 무시. 티켓 수는 "—" 로 표시.
-      });
-    return () => {
-      alive = false;
-    };
   }, []);
 
   useEffect(() => {
@@ -102,23 +83,6 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* 통계 스탯 — 누적 티켓 */}
-        <Link
-          href="/my/tickets"
-          className="block rounded-lg border border-border bg-bg-subtle px-4 py-3 hover:border-primary transition-colors"
-        >
-          <p className="text-xs text-text-secondary flex items-center justify-between">
-            <span>누적 티켓</span>
-            <span className="text-primary text-sm leading-none">›</span>
-          </p>
-          <p className="mt-1 font-mono-tabular">
-            <strong className="text-2xl text-text">
-              {ticketCount ?? '—'}
-            </strong>
-            <span className="text-sm text-text-tertiary ml-1">매</span>
-          </p>
-        </Link>
-
         {/* 관리자 진입 — role=admin 전용. UI 은닉이며 최종 인가는 백엔드 requireAdmin이 담당. */}
         {isAdmin && (
           <Link
@@ -141,20 +105,19 @@ export default function MyPage() {
               <tr className="border-b border-border bg-bg-subtle">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">오픈</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">이벤트</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">참여비</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">상태</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {registrations === null ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
+                  <td colSpan={3} className="px-4 py-8 text-center text-sm text-text-secondary">
                     불러오는 중…
                   </td>
                 </tr>
               ) : registrations.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-text-secondary">
+                  <td colSpan={3} className="px-4 py-8 text-center text-sm text-text-secondary">
                     신청한 이벤트가 없습니다.
                   </td>
                 </tr>
@@ -176,9 +139,6 @@ export default function MyPage() {
                         >
                           {r.event.title}
                         </Link>
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono-tabular text-text-secondary">
-                        {typeof r.pointsPaid === 'number' ? `${r.pointsPaid.toLocaleString()}매` : '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`badge ${st.cls}`}>{st.text}</span>

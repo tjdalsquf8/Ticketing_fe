@@ -172,7 +172,7 @@ export default function AdminDashboardPage() {
         <div className="grid sm:grid-cols-3 gap-3">
           <Link href="/admin/events/new" className="card p-4 hover:border-primary transition-colors">
             <p className="text-sm font-semibold text-text">+ 새 이벤트</p>
-            <p className="mt-1 text-xs text-text-secondary">유료 이벤트 생성</p>
+            <p className="mt-1 text-xs text-text-secondary">이벤트 생성</p>
           </Link>
           <Link href="/admin/gifticons" className="card p-4 hover:border-primary transition-colors">
             <p className="text-sm font-semibold text-text">+ 기프티콘 재고 업로드</p>

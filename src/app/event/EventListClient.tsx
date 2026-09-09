@@ -32,7 +32,7 @@ import { safeHexColor, safeImageUrl } from '@/lib/safe';
 /* ──────────────────────────────────────────
    EventListClient — /event 상단 캘린더 + 하단 리스트
    ─ 실제 API 연동: GET /api/events, /api/events/calendar, /api/events/nearest
-   ─ 참여 신청: POST /api/events/:id/registrations (보유 티켓 사용)
+   ─ 참여 신청: POST /api/events/:id/registrations (로그인 필수, 무료)
    ────────────────────────────────────────── */
 
 const STATUS_LABEL: Record<EventStatus, { text: string; cls: string }> = {
@@ -45,7 +45,7 @@ const STATUS_LABEL: Record<EventStatus, { text: string; cls: string }> = {
 export default function EventListClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, refreshMe } = useAuth();
+  const { user } = useAuth();
 
   const ymParam = searchParams.get('ym');
   const ym = useMemo(() => {
@@ -166,7 +166,6 @@ export default function EventListClient() {
       });
       setModalTargetId(null);
       loadAll();
-      refreshMe();
     } catch (err) {
       if (err instanceof ApiError) {
         setModalError(err.message);
@@ -176,15 +175,15 @@ export default function EventListClient() {
     } finally {
       setModalPending(false);
     }
-  }, [modalTarget, modalPending, loadAll, refreshMe]);
+  }, [modalTarget, modalPending, loadAll]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-8">
       {/* 헤더 */}
       <header className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold text-text">유료 이벤트</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-text">이벤트</h1>
         <p className="text-sm text-text-secondary">
-          보유 티켓으로 도전하고, 소요 시간 TOP 3에게 기프티콘이 즉시 지급됩니다.
+          로그인 후 무료로 사전 신청하고, 소요 시간 TOP 3에게 기프티콘이 즉시 지급됩니다.
         </p>
       </header>
 
@@ -315,17 +314,11 @@ export default function EventListClient() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                         <div>
                           <p className="text-text-tertiary">오픈 (KST)</p>
                           <p className="mt-0.5 font-mono-tabular font-semibold text-text">
                             {formatKstDateTime(ev.opensAt)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-text-tertiary">참여비</p>
-                          <p className="mt-0.5 font-mono-tabular font-semibold text-text">
-                            {ev.entryFeePoints}매
                           </p>
                         </div>
                         <div>
@@ -385,7 +378,7 @@ export default function EventListClient() {
                             onClick={() => handleOpenRegistration(ev.eventId)}
                             className="btn btn-solid btn-sm shrink-0"
                           >
-                            참여 신청 ({ev.entryFeePoints}매)
+                            참여 신청
                           </button>
                         ) : (
                           <Link
@@ -408,8 +401,6 @@ export default function EventListClient() {
       <EventRegistrationModal
         open={!!modalTarget}
         eventTitle={modalTarget?.title ?? ''}
-        entryFeeTickets={modalTarget?.entryFeePoints ?? 0}
-        currentTickets={user?.ticketBalance ?? Number.POSITIVE_INFINITY}
         pending={modalPending}
         errorMessage={modalError}
         onConfirm={handleConfirmRegistration}

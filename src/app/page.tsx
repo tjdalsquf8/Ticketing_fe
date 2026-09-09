@@ -1,6 +1,5 @@
 import HomeWelcomeHero from './HomeWelcomeHero';
 import HomeAnnouncements from './HomeAnnouncements';
-import HomePersonalStrip from './HomePersonalStrip';
 import HomeOpenBanner from './HomeOpenBanner';
 import HomeLiveHero from './HomeLiveHero';
 import HomeLatestResults from './HomeLatestResults';
@@ -18,7 +17,6 @@ export default function HomePage() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-6">
       <HomeWelcomeHero />
       <HomeAnnouncements />
-      <HomePersonalStrip />
       <HomeOpenBanner />
       <HomeLiveHero />
       <HomeLatestResults />

@@ -2,10 +2,10 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import EventListClient from './EventListClient';
 
-export const metadata: Metadata = { title: '유료 이벤트' };
+export const metadata: Metadata = { title: '이벤트' };
 
 /* ──────────────────────────────────────────
-   /event — 유료 이벤트 목록 (서버)
+   /event — 이벤트 목록 (서버)
    ─ 실제 인터랙션은 EventListClient (캘린더 + 리스트)
    ─ 백엔드 미연결. 목데이터는 클라이언트에 소유됨
    ────────────────────────────────────────── */

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   cancelRound,
+  createRoundNow,
   getAdminRoundStats,
   getRoundDetail,
   listRounds,
@@ -164,6 +165,9 @@ export default function AdminLiveClient() {
           공연 설정
         </Link>
       </div>
+
+      {/* 테스트용 즉시 생성 — 정각까지 기다리지 않고 지금 라운드 열기. 테스트 끝나면 제거. */}
+      <CreateNowPanel onCreated={() => reload()} />
 
       {/* 크론 관리 — 서버 다운타임 복구용 escape hatch */}
       <CronControlPanel
@@ -622,6 +626,78 @@ function MiniStat({ label, value }: { label: string; value: number }) {
       <p className="text-[10px] font-semibold text-text-tertiary tracking-wide">{label}</p>
       <p className="mt-0.5 text-lg font-bold font-mono-tabular text-text">{value}</p>
     </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// 테스트용 즉시 생성 패널 (임시)
+// ─ 매시 정각 대기 없이 지금 시각 기준으로 라운드를 즉시 open.
+// ─ 테스트 끝나면 이 컴포넌트 + adminLive.ts의 createRoundNow 제거 대상.
+// ═══════════════════════════════════════════════════════
+
+function CreateNowPanel({ onCreated }: { onCreated: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<ToastState>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function handleCreate() {
+    setBusy(true);
+    setToast(null);
+    try {
+      const round = await createRoundNow();
+      setToast({
+        tone: 'success',
+        text: `#${round.id} 생성 완료 · ${formatTime(round.opensAt)} ~ ${formatTime(round.closesAt)}`,
+      });
+      onCreated();
+    } catch (e) {
+      setToast({
+        tone: 'danger',
+        text: e instanceof ApiError ? e.message : '라운드 생성 실패',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card p-5 space-y-3 border-warning-border bg-warning-bg/30">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-text">테스트용 즉시 생성</h2>
+          <p className="mt-0.5 text-xs text-text-secondary">
+            매시 정각까지 기다리지 않고 지금 시각 기준으로 라운드를 바로 엽니다. 테스트 전용, 실서비스에서 쓰지 마세요.
+          </p>
+        </div>
+        {toast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={[
+              'shrink-0 max-w-xs text-xs font-medium rounded-md px-3 py-2 border',
+              toast.tone === 'success'
+                ? 'bg-success-bg text-success-text border-success-border'
+                : 'bg-danger-bg text-danger-text border-danger-border',
+            ].join(' ')}
+          >
+            {toast.text}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => void handleCreate()}
+        disabled={busy}
+        className="btn btn-sm btn-outline"
+      >
+        {busy ? '생성 중…' : '지금 만들기'}
+      </button>
+    </section>
   );
 }
 

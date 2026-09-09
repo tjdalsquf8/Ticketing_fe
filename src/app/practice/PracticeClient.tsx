@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import BookingFlow from '@/components/booking/BookingFlow';
 import TicketingDetailLayout, {
@@ -10,6 +10,8 @@ import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { PRACTICE_EVENTS, type PracticeEvent } from '@/data/practice';
 import { parseLiveSeatLabel } from '@/data/live/seatLabels';
+import { getRankings, getMyRankings, type RankEntry, type RankingPeriod } from '@/lib/rankings';
+import RankingRows from '@/components/ranking/RankingRows';
 
 /**
  * 해당 tier에 속한 "실제 선택 가능한 좌석 수"를 계산.
@@ -87,6 +89,35 @@ export default function PracticeClient() {
   const bookingLockRef = useRef<boolean>(false);
   // 대기 화면에서 새로고침을 감지해 자동으로 예매 진입을 재개하기 위한 플래그
   const [pendingResume, setPendingResume] = useState<boolean>(false);
+
+  // 연습 랭킹 섹션 — 전체/내기록 탭 + 기간 필터 (선택된 이벤트로 스코프)
+  const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
+  const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
+  const [rankings, setRankings] = useState<RankEntry[]>([]);
+  const [rankLoading, setRankLoading] = useState(true);
+
+  const loadRankings = useCallback(async () => {
+    if (!selectedEvent) return;
+    if (rankTab === 'mine' && !user) {
+      setRankings([]);
+      setRankLoading(false);
+      return;
+    }
+    setRankLoading(true);
+    const fetcher = rankTab === 'mine' ? getMyRankings : getRankings;
+    try {
+      const rows = await fetcher({ mode: 'practice', period: rankPeriod, eventId: selectedEvent.eventId });
+      setRankings(rows);
+    } catch {
+      setRankings([]);
+    } finally {
+      setRankLoading(false);
+    }
+  }, [selectedEvent, rankTab, rankPeriod, user]);
+
+  useEffect(() => {
+    void loadRankings();
+  }, [loadRankings]);
 
   // 마운트 시 sessionStorage 확인 — 대기 화면에서 새로고침한 경우 이벤트/날짜/회차 + 세션 정보 복원 후 재개 플래그 세팅
   useEffect(() => {
@@ -423,6 +454,79 @@ export default function PracticeClient() {
         {selectedEvent.sessions[selectedSession].label}
       </div>
 
+      {/* 연습 랭킹 */}
+      <div id="practice-ranking" className="max-w-6xl mx-auto px-4 pb-10 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-text">연습 랭킹</h2>
+            <p className="text-sm text-text-secondary mt-1">소요 시간이 빠른 순으로 정렬됩니다.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+              {([{ key: 'all', label: '전체 랭킹' }, { key: 'mine', label: '내 기록' }] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRankTab(key)}
+                  className={[
+                    'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                    key === rankTab
+                      ? 'bg-bg-surface text-text shadow-xs border border-border'
+                      : 'text-text-secondary hover:text-text',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+              {([{ key: 'daily', label: '일간' }, { key: 'weekly', label: '주간' }, { key: 'monthly', label: '월간' }] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRankPeriod(key)}
+                  className={[
+                    'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                    key === rankPeriod
+                      ? 'bg-bg-surface text-text shadow-xs border border-border'
+                      : 'text-text-secondary hover:text-text',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {rankTab === 'mine' && !user ? (
+          <p className="card p-6 text-sm text-text-secondary text-center">
+            로그인하면 내 기록을 볼 수 있습니다.
+          </p>
+        ) : (
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-bg-subtle">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rankLoading ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  </tr>
+                ) : (
+                  <RankingRows rankings={rankings} />
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
     {/* 대기 화면 오버레이 */}
     {showWaiting && selectedEvent && (
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-4">
@@ -532,6 +636,13 @@ export default function PracticeClient() {
               startedAt={sessionStartedAt ?? undefined}
               skipCaptcha={false}
               onBack={() => setShowPopup(false)}
+              onViewRanking={() => {
+                setShowPopup(false);
+                void loadRankings();
+                requestAnimationFrame(() => {
+                  document.getElementById('practice-ranking')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+              }}
               liveSeatLabels={selectedEvent.liveSeatLabels}
             />
           </div>

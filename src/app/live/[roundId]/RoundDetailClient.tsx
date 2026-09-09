@@ -16,10 +16,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { postGuest } from '@/lib/guests';
 import QueueOverlay from '@/components/live/QueueOverlay';
 import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
+import { getVenueConfig } from '@/lib/venues';
+import type { VenueConfig } from '@/types/ticketing';
 import BookingFlow from '@/components/booking/BookingFlow';
 import type { LiveConfirmResult } from '@/lib/live';
-import { getMyTickets, getTicket, type TicketDetail } from '@/lib/tickets';
-import TicketModal, { type TicketData } from '@/components/booking/TicketModal';
 import LiveResultCard from '@/components/live/LiveResultCard';
 import TicketingDetailLayout, {
   type TicketingSession,
@@ -66,7 +66,6 @@ interface LiveResultSnapshot {
   roundId: number;
   rankNumber: number;
   elapsedMs: number;
-  ticketId: number | null;
   seatLabel: string;
   savedAt: number;
 }
@@ -110,7 +109,6 @@ function readResultSnapshot(): LiveResultSnapshot | null {
       typeof parsed.roundId === 'number' &&
       typeof parsed.rankNumber === 'number' &&
       typeof parsed.elapsedMs === 'number' &&
-      (parsed.ticketId === null || typeof parsed.ticketId === 'number') &&
       typeof parsed.seatLabel === 'string' &&
       typeof parsed.savedAt === 'number'
     ) {
@@ -165,13 +163,8 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     result: LiveConfirmResult;
     seatLabel: string;
   } | null>(null);
-  // 회원 && TOP10 인 경우 티켓 상세 채움. null=미조회, {detail}=성공, {error}=실패(재시도 UI 노출).
-  const [ticketDetail, setTicketDetail] = useState<TicketDetail | null>(null);
-  const [ticketError, setTicketError] = useState<Error | null>(null);
-  const [ticketLoading, setTicketLoading] = useState(false);
-  // 이 회차에 이미 참여 완료했는지 (회원). 최근 20개 티켓 조회로 감지 → [예매하기] 대신 "참여 완료" 배지.
-  // 게스트는 여기서 감지 못 하고 [예매하기] 클릭 후 completed 세션 응답으로 알림 (RoundDetailClient performStart).
-  const [alreadyParticipatedTicketId, setAlreadyParticipatedTicketId] = useState<number | null>(null);
+  // 백엔드 venue config(geometry). 실패 시 FE 정적 카탈로그(event.venue)로 폴백.
+  const [venueConfig, setVenueConfig] = useState<VenueConfig | null>(null);
 
   // 큐 폴링 → 초기 세션 응답을 LiveQueueState 로 변환해 주입
   const initialQueueState = useMemo(() => {
@@ -231,30 +224,22 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     };
   }, [roundId]);
 
-  // 회원 참여 이력 감지: 최근 20개 티켓에서 이 roundId 매칭 시 이미 참여 완료 표시.
-  // 실패는 조용히 무시 (감지 못 해도 클릭 후 completed 세션 응답으로 fallback 알림 있음).
+  // 백엔드 venue config 조회. 실시간/이벤트 티켓팅 공용 geometry 소스.
   useEffect(() => {
-    if (!user) {
-      setAlreadyParticipatedTicketId(null);
-      return;
-    }
-    const numericRoundId = Number(roundId);
-    if (!Number.isFinite(numericRoundId)) return;
+    if (state.kind !== 'ready') return;
     let alive = true;
     (async () => {
       try {
-        const { data: tickets } = await getMyTickets({ page: 1, limit: 20 });
-        if (!alive) return;
-        const match = tickets.find((t) => t.roundId === numericRoundId);
-        setAlreadyParticipatedTicketId(match ? match.ticketId : null);
+        const { config } = await getVenueConfig(state.round.venueId);
+        if (alive) setVenueConfig(config);
       } catch {
-        // 감지 실패는 무시. clic 후 completed 세션으로 알림된다.
+        // 폴백: FE 정적 카탈로그(event.venue) 그대로 사용.
       }
     })();
     return () => {
       alive = false;
     };
-  }, [user, roundId]);
+  }, [state]);
 
   // sessionStorage 복구: 새로고침/이탈 후 재진입 시 큐 오버레이 or 결과 화면 자동 복원.
   // 결과 스냅샷 우선 — 이미 confirm 완료된 세션이라면 큐/좌석 화면으로 되돌리면 안 됨.
@@ -274,7 +259,6 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
         result: {
           rankNumber: resultSnap.rankNumber,
           elapsedMs: resultSnap.elapsedMs,
-          ticketId: resultSnap.ticketId,
         },
         seatLabel: resultSnap.seatLabel,
       });
@@ -423,7 +407,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
         // 큐 오버레이 진입하면 폴링만 무한 반복되므로 사전에 차단하고 안내한다.
         if (session.status === 'completed') {
           setStartError(
-            new Error('이미 이 회차에 참여하셨습니다. 결과는 내 티켓 또는 다른 회차에서 확인해 주세요.'),
+            new Error('이미 이 회차에 참여하셨습니다. 결과는 실시간 랭킹 또는 다른 회차에서 확인해 주세요.'),
           );
           clearSessionSnapshot();
           return;
@@ -535,7 +519,6 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
           roundId: numericRoundId,
           rankNumber: result.rankNumber,
           elapsedMs: result.elapsedMs,
-          ticketId: result.ticketId,
           seatLabel,
           savedAt: Date.now(),
         });
@@ -552,42 +535,17 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     setActiveSessionId(null);
     setInitialSessionData(null);
     setLiveResult(null);
-    setTicketDetail(null);
-    setTicketError(null);
   }, []);
 
-  // 결과 화면 이탈(다른 회차 보기/회원가입/내 티켓 보기 링크) 훅
+  // 결과 팝업 닫기(배경 클릭/랭킹 보러가기 클릭) 훅. 팝업 자체를 닫아야
+  // 회차 히어로 화면이 다시 정상 동작한다(그렇지 않으면 showResult 가 계속 true).
   const handleLeaveResult = useCallback(() => {
     clearResultSnapshot();
     clearSessionSnapshot();
+    setLiveResult(null);
+    setEnteredSessionId(null);
+    setActiveSessionId(null);
   }, []);
-
-  // 회원 && TOP10 (ticketId !== null) → 티켓 상세 조회. 실패 시 재시도 가능.
-  const loadTicketDetail = useCallback(async (ticketId: number) => {
-    setTicketLoading(true);
-    setTicketError(null);
-    try {
-      const detail = await getTicket(ticketId);
-      setTicketDetail(detail);
-    } catch (err) {
-      if (err instanceof Error) setTicketError(err);
-      else setTicketError(new Error('티켓 상세를 불러오지 못했습니다.'));
-    } finally {
-      setTicketLoading(false);
-    }
-  }, []);
-
-  // liveResult 변경 감지 → 회원 && ticketId 있으면 상세 조회
-  useEffect(() => {
-    if (!liveResult) return;
-    if (!user) return;
-    const tid = liveResult.result.ticketId;
-    if (tid === null) return;
-    if (ticketDetail?.ticketId === tid) return;
-    void loadTicketDetail(tid);
-    // ticketDetail 은 의존성에서 제외 — 성공 시 재조회 트리거 방지.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveResult, user, loadTicketDetail]);
 
   // ── 렌더 ─────────────────────────────────
   if (state.kind === 'loading') {
@@ -612,60 +570,19 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const event: LiveEvent | null = getLiveEventByVenueSlug(round.venueId);
   const roundTitle = event?.title ?? `실시간 회차 #${round.roundId}`;
 
-  // 결과 화면(liveResult) 이 있으면 부킹/오버레이/히어로 모두 숨김. 결과가 최우선.
+  // 결과(liveResult)는 이제 팝업으로 뜨고 회차 히어로 화면은 그대로 유지한다.
   // 단, auth 하이드레이션 중에는 회원/게스트 분기 자체를 미룬다
-  // (게스트 결과 카드가 로그인 유저에게 노출되는 오분기 차단).
+  // (게스트 결과 팝업이 로그인 유저에게 노출되는 오분기 차단).
   const showResult = liveResult !== null && !authLoading;
   // ready 승격 후 좌석 선택 화면 노출 여부.
   const showBookingFlow =
     !showResult &&
     enteredSessionId !== null && enteredSessionId === activeSessionId;
   const showOverlay = !showResult && activeSessionId !== null && !showBookingFlow;
-  const showHero = !showBookingFlow && !showResult;
+  const showHero = !showBookingFlow && !showOverlay;
 
-  // 3분기 결과 화면 분기 파생값
-  const resultTicketId = liveResult?.result.ticketId ?? null;
-  const resultRankNumber = liveResult?.result.rankNumber ?? null;
+  // 결과 팝업(예매 성공 + 소요 시간)에 넘길 값.
   const resultElapsedMs = liveResult?.result.elapsedMs ?? 0;
-  const resultSeatLabel = liveResult?.seatLabel ?? '';
-  const isMemberWithTicket = showResult && !!user && resultTicketId !== null;
-  const isMemberMissed     = showResult && !!user && resultTicketId === null;
-  const isGuestResult      = showResult && !user;
-
-  // TicketModal 로 넘길 데이터. 티켓 상세 성공 시 정식 값, 로딩/실패 시 폴백값.
-  const liveTicketData: TicketData | null = isMemberWithTicket
-    ? (() => {
-        const nickname = user!.name;
-        const seatDisplay = resultSeatLabel; // 서버 seatLabel 그대로 표기 (예: "A-A-1")
-        if (ticketDetail) {
-          return {
-            eventTitle: event?.title ?? `실시간 회차 #${round.roundId}`,
-            seat: seatDisplay,
-            nickname,
-            elapsedMs: ticketDetail.elapsedMs,
-            ranked: true,
-            rankNumber: ticketDetail.rankNumber,
-            totalCount: ticketDetail.totalParticipants,
-            rankPercentile: ticketDetail.rankPercentile,
-            serial: ticketDetail.serial,
-            issuedAt: new Date(Date.parse(ticketDetail.issuedAt)),
-          };
-        }
-        // 상세 조회 실패/로딩 폴백: confirm 응답 값만으로 UI 채움
-        return {
-          eventTitle: event?.title ?? `실시간 회차 #${round.roundId}`,
-          seat: seatDisplay,
-          nickname,
-          elapsedMs: resultElapsedMs,
-          ranked: true,
-          rankNumber: resultRankNumber,
-          totalCount: null,
-          rankPercentile: null,
-          serial: ticketLoading ? 'TR-......-loading' : 'TR-......-error',
-          issuedAt: new Date(),
-        };
-      })()
-    : null;
 
   // BookingFlow 에 넘길 meta 매핑.
   const opensAtDate = new Date(Date.parse(round.opensAt));
@@ -690,16 +607,13 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const remainingToOpenMs = opensAtMs - nowMs;
   const isClosedOrCancelled =
     round.status === 'closed' || round.status === 'cancelled';
-  const alreadyParticipated = alreadyParticipatedTicketId !== null;
   const isOpen = round.status === 'open' || nowMs >= opensAtMs;
 
-  const layoutCanBook =
-    !isClosedOrCancelled && !alreadyParticipated && isOpen && !authLoading;
+  const layoutCanBook = !isClosedOrCancelled && isOpen && !authLoading;
   const layoutDisabledReason: string | undefined = (() => {
     if (isClosedOrCancelled) {
       return round.status === 'cancelled' ? '취소된 회차' : '종료된 회차';
     }
-    if (alreadyParticipated) return '이미 참여 완료한 회차';
     if (!isOpen) return `오픈까지 ${formatCountdown(remainingToOpenMs)}`;
     return undefined;
   })();
@@ -772,16 +686,6 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     },
   ];
 
-  const alreadyParticipatedFootnote =
-    alreadyParticipated && alreadyParticipatedTicketId !== null ? (
-      <Link
-        href={`/my/tickets/${alreadyParticipatedTicketId}`}
-        className="text-primary font-semibold hover:underline"
-      >
-        내 티켓 보기 →
-      </Link>
-    ) : null;
-
   return (
     <div className="max-w-6xl mx-auto">
       {showHero && (
@@ -804,18 +708,16 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
             backHref="/live"
             backLabel="← 실시간 이벤트 목록"
             ctaFootnote={
-              alreadyParticipatedFootnote ?? (
-                <>
-                  게스트도 참여 가능 · 티켓 지급은{' '}
-                  <strong className="text-text-secondary">회원 전용</strong>
-                </>
-              )
+              <>
+                게스트도 참여 가능 · 리더보드 등재는{' '}
+                <strong className="text-text-secondary">회원 전용</strong>
+              </>
             }
             rules={[
               '회차 오픈 시각에 맞춰 대기실이 자동 개방됩니다.',
               '진행 중 새로고침 시 대기순서가 초기화됩니다.',
-              '성공한 사람 중 소요 시간 TOP 10 회원에게 티켓 1매가 지급됩니다.',
-              '게스트는 참여 가능하지만 티켓 지급 대상은 회원 전용입니다.',
+              '성공한 사람은 소요 시간 기준으로 실시간 랭킹에 반영됩니다.',
+              '게스트는 참여 가능하지만 리더보드 등재는 회원 전용입니다.',
             ]}
           />
 
@@ -855,10 +757,9 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
         event ? (
           <div className="rounded-xl border border-border bg-bg-surface overflow-hidden">
             <BookingFlow
-              venue={event.venue}
+              venue={venueConfig ?? event.venue}
               meta={bookingMeta}
               mode="live"
-              skipCaptcha
               liveMode={{
                 sessionId: enteredSessionId,
                 roundId: round.roundId,
@@ -889,60 +790,11 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
         )
       )}
 
-      {/* ─── 결과 3분기 ─── */}
-      {isMemberMissed && (
+      {/* ─── 예매 성공 팝업 ─── */}
+      {showResult && (
         <LiveResultCard
-          rankNumber={resultRankNumber}
           elapsedMs={resultElapsedMs}
-          seatLabel={resultSeatLabel}
-          variant="member-missed"
           onLeave={handleLeaveResult}
-        />
-      )}
-
-      {isGuestResult && (
-        <LiveResultCard
-          rankNumber={resultRankNumber}
-          elapsedMs={resultElapsedMs}
-          seatLabel={resultSeatLabel}
-          variant="guest"
-          wouldHaveBeenTicketed={
-            resultRankNumber !== null && resultRankNumber <= 10
-          }
-          onLeave={handleLeaveResult}
-        />
-      )}
-
-      {/* 티켓 상세 로딩 실패 시 재시도 UI (모달 위에 카드 형태로 얹기 어렵기 때문에
-          모달 바깥에도 노출). ticketDetail 성공 시 자동 사라짐. */}
-      {isMemberWithTicket && ticketError && !ticketLoading && (
-        <div className="card p-4 max-w-xl mx-auto space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="badge badge-warning">티켓 상세 불러오기 실패</span>
-          </div>
-          <p className="text-sm text-text-secondary">
-            티켓은 발급됐지만 상세 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.
-          </p>
-          <p className="text-xs text-danger-text">{ticketError.message}</p>
-          <button
-            type="button"
-            onClick={() => {
-              if (liveResult?.result.ticketId !== null && liveResult) {
-                void loadTicketDetail(liveResult.result.ticketId!);
-              }
-            }}
-            className="btn btn-outline btn-sm"
-          >
-            다시 시도
-          </button>
-        </div>
-      )}
-
-      {isMemberWithTicket && liveTicketData && (
-        <TicketModal
-          {...liveTicketData}
-          mode="live"
-          onClose={handleLeaveResult}
         />
       )}
 

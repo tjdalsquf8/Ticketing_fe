@@ -4,16 +4,14 @@ import { useEffect, useRef, useState } from 'react';
 
 /* ──────────────────────────────────────────
    EventCancelModal
-   ─ 관리자 이벤트 취소·환불 확인 모달
+   ─ 관리자 이벤트 취소 확인 모달
    ─ 사유 필수 입력 (BE POST /admin/events/:id/cancel body.reason)
-   ─ pending 신청자 전원 자동 환불 안내
    ────────────────────────────────────────── */
 
 interface Props {
   open: boolean;
   eventTitle: string;
   registeredCount: number;
-  entryFeePoints: number;
   pending?: boolean;
   errorMessage?: string | null;
   onConfirm: (reason: string) => void;
@@ -28,7 +26,6 @@ export default function EventCancelModal({
   open,
   eventTitle,
   registeredCount,
-  entryFeePoints,
   pending = false,
   errorMessage = null,
   onConfirm,
@@ -39,7 +36,6 @@ export default function EventCancelModal({
 
   const trimmed = reason.trim();
   const tooShort = trimmed.length < REASON_MIN;
-  const refundTotal = registeredCount * entryFeePoints;
 
   useEffect(() => {
     if (!open) {
@@ -91,7 +87,7 @@ export default function EventCancelModal({
         {/* 헤더 */}
         <div className="p-5 border-b border-border">
           <p className="text-[11px] font-semibold text-danger-text tracking-wider uppercase">
-            취소·전원 환불
+            이벤트 취소
           </p>
           <h3 className="mt-1 text-lg font-bold text-text">이벤트 취소 확인</h3>
         </div>
@@ -105,27 +101,19 @@ export default function EventCancelModal({
             </p>
           </div>
 
-          {/* 환불 요약 */}
+          {/* 취소 영향 요약 */}
           <div className="rounded-xl border border-danger-border bg-danger-bg p-4 space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-sm font-semibold text-danger-text">
-                환불 대상 신청자
+                신청자
               </span>
               <span className="font-mono-tabular font-bold text-danger-text">
                 {registeredCount.toLocaleString()}명
               </span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-danger-text/80">
-                자동 환불 합계
-              </span>
-              <span className="font-mono-tabular text-danger-text">
-                {refundTotal.toLocaleString()}매
-              </span>
-            </div>
             {registeredCount > 0 && (
               <p className="text-[11px] text-danger-text/80 pt-1 border-t border-danger-border">
-                확인 즉시 pending 신청자 전원 티켓 자동 환불됩니다.
+                확인 즉시 pending 신청자 전원의 신청이 취소됩니다.
               </p>
             )}
           </div>
@@ -213,7 +201,7 @@ export default function EventCancelModal({
                 />
               </svg>
             ) : (
-              '이벤트 취소·환불'
+              '이벤트 취소'
             )}
           </button>
         </div>

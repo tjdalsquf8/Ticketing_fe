@@ -17,7 +17,7 @@ export default function HomeWelcomeHero() {
 
         <p className="text-sm sm:text-base text-text-secondary leading-relaxed max-w-2xl">
           실전과 동일한 좌석·큐·홀드 플로우로 연습하고, 매 정각 열리는 무료
-          실시간 매치에서 실력을 겨루세요. 상위 도전자에게는 실물 티켓·상품 지급.
+          실시간 매치에서 실력을 겨루세요. 상위 도전자에게는 상품 지급.
         </p>
 
         <div className="flex flex-wrap gap-2">

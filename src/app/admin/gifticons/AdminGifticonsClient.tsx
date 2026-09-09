@@ -172,7 +172,7 @@ export default function AdminGifticonsClient() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-text">기프티콘 재고</h1>
-          <p className="mt-1 text-sm text-text-secondary">유료 이벤트 상품 재고를 관리합니다.</p>
+          <p className="mt-1 text-sm text-text-secondary">이벤트 상품 재고를 관리합니다.</p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button type="button" onClick={() => setCreateOpen(true)} className="btn btn-solid">

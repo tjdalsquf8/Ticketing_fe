@@ -65,7 +65,6 @@ export default function AdminEventEditPage({
   const [venueId, setVenueId] = useState('');
   const [opensAt, setOpensAt] = useState('');
   const [totalSeats, setTotalSeats] = useState('');
-  const [entryFeePoints, setEntryFeePoints] = useState('500');
   const [prize, setPrize] = useState('');
   const [posterColor, setPosterColor] = useState('#1E3A8A');
   const [posterInitial, setPosterInitial] = useState('');
@@ -88,7 +87,6 @@ export default function AdminEventEditPage({
       setVenueId(detail.venueId);
       setOpensAt(toDatetimeLocal(detail.opensAt));
       setTotalSeats(String(detail.totalSeats));
-      setEntryFeePoints(String(detail.entryFeePoints));
       setPrize(detail.prize);
       setPosterColor(detail.posterColor);
       setPosterInitial(detail.posterInitial ?? '');
@@ -126,7 +124,7 @@ export default function AdminEventEditPage({
     if (!event) return;
     const found = validateEventForm({
       title, category, venueId, opensAt, totalSeats,
-      entryFeePoints, prize,
+      prize,
     });
     if (opensAt === toDatetimeLocal(event.opensAt)) delete found.opensAt;
     setErrors(found);
@@ -139,7 +137,6 @@ export default function AdminEventEditPage({
         category: BE_CATEGORY_MAP[category],
         venueId,
         opensAt: new Date(opensAt).toISOString(),
-        entryFeePoints: Number(entryFeePoints),
         prize: prize.trim(),
         posterColor,
         ...(posterInitial ? { posterInitial } : {}),
@@ -228,7 +225,7 @@ export default function AdminEventEditPage({
               disabled={pending || cancelPending}
               className="btn btn-danger btn-sm"
             >
-              취소·환불
+              이벤트 취소
             </button>
           )}
         </div>
@@ -336,19 +333,6 @@ export default function AdminEventEditPage({
             </Field>
           </div>
 
-          <Field label="참여비 (티켓)" required error={errors.entryFeePoints}>
-            <input
-              type="number"
-              min={LIMITS.entryFeePoints.min}
-              max={LIMITS.entryFeePoints.max}
-              step={1}
-              value={entryFeePoints}
-              onChange={(e) => setEntryFeePoints(e.target.value)}
-              disabled={status === 'open' || isReadOnly}
-              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-bg-subtle"
-            />
-          </Field>
-
           <Field label="상품" required error={errors.prize}>
             <TextInput value={prize} onChange={setPrize} maxLength={LIMITS.prize.max} />
           </Field>
@@ -421,7 +405,6 @@ export default function AdminEventEditPage({
         open={cancelOpen}
         eventTitle={event.title}
         registeredCount={event.registeredCount}
-        entryFeePoints={event.entryFeePoints}
         pending={cancelPending}
         errorMessage={cancelError}
         onConfirm={handleConfirmCancel}
