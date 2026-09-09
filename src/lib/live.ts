@@ -16,6 +16,15 @@ export type LiveSessionStatus = "queued" | "active" | "completed";
  * 주의: admin `LiveConfig.defaultVenueId` 는 **정수 PK**, 여기 `venueId` 는 **slug 문자열**.
  * 이름은 같아도 타입이 다르므로 자료구조 오해 주의 (BE 팀 공지).
  */
+/** GET /api/live/rounds/:roundId 전용 필드. 요청자(로그인 유저/게스트 쿠키) 기준 참여 이력. */
+export interface LiveMyParticipation {
+  sessionId: string;
+  status: LiveSessionStatus;
+  queuePosition: number | null;
+  seatLabel: string | null;
+  elapsedMs: number | null;
+}
+
 export interface LiveRoundSummary {
   roundId: number;
   opensAt: string;
@@ -23,6 +32,8 @@ export interface LiveRoundSummary {
   venueId: string;
   status: LiveRoundStatus;
   totalSeats: number;
+  /** GET /api/live/rounds/:roundId 에서만 내려옴. 참여 이력 없거나 식별 불가면 null. */
+  myParticipation?: LiveMyParticipation | null;
 }
 
 /** GET /api/live/rounds/:roundId. */

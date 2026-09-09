@@ -284,6 +284,20 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, authLoading]);
 
+  // 서버 참여 이력(myParticipation)으로 큐/오버레이 복원.
+  // 로컬 스냅샷과 달리 다른 탭·기기에서도 정확하므로, 로컬 복원이 못 잡은 경우를 보완한다.
+  // (완료 상태는 여기서 자동 복원하지 않는다 — 예매 버튼 비활성화만으로 충분하고,
+  //  결과 팝업 재현엔 rankNumber 등 로컬 스냅샷에만 있는 정보가 필요하다.)
+  useEffect(() => {
+    if (state.kind !== 'ready') return;
+    if (activeSessionId || liveResult) return;
+    const mp = state.round.myParticipation;
+    if (mp && (mp.status === 'queued' || mp.status === 'active')) {
+      setActiveSessionId(mp.sessionId);
+      setInitialSessionData(null);
+    }
+  }, [state, activeSessionId, liveResult]);
+
   // 카운트다운 tick (500ms)
   useEffect(() => {
     if (state.kind !== 'ready') return;
@@ -539,6 +553,8 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
 
   // 결과 팝업 닫기(배경 클릭/랭킹 보러가기 클릭) 훅. 팝업 자체를 닫아야
   // 회차 히어로 화면이 다시 정상 동작한다(그렇지 않으면 showResult 가 계속 true).
+  // "이미 참여한 회차" 판단은 이제 서버 myParticipation 이 맡으므로, 로컬 결과
+  // 스냅샷은 팝업을 닫는 시점에 지워서 재진입 시 팝업이 또 뜨지 않게 한다.
   const handleLeaveResult = useCallback(() => {
     clearResultSnapshot();
     clearSessionSnapshot();
@@ -570,13 +586,13 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const event: LiveEvent | null = getLiveEventByVenueSlug(round.venueId);
   const roundTitle = event?.title ?? `실시간 회차 #${round.roundId}`;
 
-  // 결과(liveResult)는 이제 팝업으로 뜨고 회차 히어로 화면은 그대로 유지한다.
+  // 결과(liveResult)는 좌석 선택 화면 위에 팝업으로 뜬다 — 확정 직후에도
+  // 좌석 화면이 꺼지지 않고 그대로 유지된 채 팝업만 덧씌워져야 한다.
   // 단, auth 하이드레이션 중에는 회원/게스트 분기 자체를 미룬다
   // (게스트 결과 팝업이 로그인 유저에게 노출되는 오분기 차단).
   const showResult = liveResult !== null && !authLoading;
   // ready 승격 후 좌석 선택 화면 노출 여부.
   const showBookingFlow =
-    !showResult &&
     enteredSessionId !== null && enteredSessionId === activeSessionId;
   const showOverlay = !showResult && activeSessionId !== null && !showBookingFlow;
   const showHero = !showBookingFlow && !showOverlay;
@@ -608,13 +624,18 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const isClosedOrCancelled =
     round.status === 'closed' || round.status === 'cancelled';
   const isOpen = round.status === 'open' || nowMs >= opensAtMs;
+  // 서버가 요청자(로그인 유저/게스트 쿠키) 기준으로 내려주는 참여 이력.
+  // 로컬 스냅샷(sessionStorage)과 달리 탭/기기와 무관하게 항상 정확하다.
+  const myParticipation = round.myParticipation;
 
-  const layoutCanBook = !isClosedOrCancelled && isOpen && !authLoading;
+  const layoutCanBook = !isClosedOrCancelled && isOpen && !authLoading && !myParticipation;
   const layoutDisabledReason: string | undefined = (() => {
     if (isClosedOrCancelled) {
       return round.status === 'cancelled' ? '취소된 회차' : '종료된 회차';
     }
     if (!isOpen) return `오픈까지 ${formatCountdown(remainingToOpenMs)}`;
+    if (myParticipation?.status === 'completed') return '이미 참여한 회차입니다';
+    if (myParticipation) return '참여 중인 세션이 있습니다';
     return undefined;
   })();
 

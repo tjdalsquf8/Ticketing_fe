@@ -16,7 +16,7 @@ function formatTime(ms: number) {
 }
 
 export default function RankingRows({ rankings }: { rankings: RankEntry[] }) {
-  const { user } = useAuth();
+  const { user, guestNickname } = useAuth();
 
   if (rankings.length === 0) {
     return (
@@ -31,9 +31,12 @@ export default function RankingRows({ rankings }: { rankings: RankEntry[] }) {
   return (
     <>
       {rankings.map((row, i) => {
-        // 인증 뱃지가 있는 로그인 유저 중, 내 이름과 일치할 때만 "나"로 판정
-        // (게스트가 같은 닉네임 써도 오탐 방지)
-        const isMe = !!user && row.is_verified && row.nickname === user.name;
+        // 로그인 유저: 인증 뱃지가 있는 행 중 내 이름과 일치할 때만 "나"로 판정
+        // (게스트가 같은 닉네임 써도 오탐 방지). 게스트: 미인증 행 중 내 게스트
+        // 닉네임과 일치할 때 판정 (로그인 유저가 같은 닉네임 써도 오탐 방지).
+        const isMe = user
+          ? row.is_verified && row.nickname === user.name
+          : !row.is_verified && !!guestNickname && row.nickname === guestNickname;
         return (
           <tr
             key={`${row.rank}-${i}`}

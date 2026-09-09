@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ROUTES } from '@/lib/api';
 import { PRACTICE_EVENTS } from '@/data/practice';
-import RankingRows from '@/components/ranking/RankingRows';
+import RankingTable from '@/components/ranking/RankingTable';
 import LatestEventBoard from '@/components/ranking/LatestEventBoard';
 
 export const metadata: Metadata = { title: '랭킹' };
@@ -249,7 +249,13 @@ async function TimeBoard({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            <RankingRows rankings={rankings} />
+            <RankingTable
+              key={`${mode}-${period}-${eventId ?? 'all'}`}
+              mode={mode}
+              period={period}
+              eventId={eventId}
+              initialRows={rankings}
+            />
           </tbody>
         </table>
       </div>
