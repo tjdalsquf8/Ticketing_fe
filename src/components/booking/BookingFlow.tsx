@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { VenueConfig, SelectedSeat } from '@/types/ticketing';
 import CaptchaModal  from './CaptchaModal';
+import PracticeResultModal from './PracticeResultModal';
 import ZoneMap       from './ZoneMap';
 import StadiumMap    from './StadiumMap';
 import ArenaRingMap  from './ArenaRingMap';
@@ -14,14 +15,15 @@ import FestivalMap   from './FestivalMap';
 import SeatGrid      from './SeatGrid';
 import SelectionPanel from './SelectionPanel';
 import { apiFetch, ROUTES } from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
-import TicketModal, { type TicketData } from './TicketModal';
 import { useLiveSeats } from '@/hooks/useLiveSeats';
 import { useServerTime } from '@/hooks/useServerTime';
 import {
+  getLiveSeats,
   holdSeat as apiHoldSeat,
   confirmSeat as apiConfirmSeat,
   type LiveConfirmResult,
+  type LiveHold,
+  type LiveSeatMap,
 } from '@/lib/live';
 import { ApiError } from '@/lib/errors';
 
@@ -36,9 +38,11 @@ type SessionResult = {
   elapsedMs: number;
   /** false: 다른 게스트가 먼저 쓴 닉네임이라 랭킹 미반영. 이 경우 rank 필드는 모두 null. */
   ranked: boolean;
-  rankNumber: number | null;
+  /** 이번 시도가 누적 세션 중 몇 번째로 빠른지. 개인 최고기록 기준 리더보드와는 별개 지표. */
+  sessionRank: number | null;
   rankPercentile: number | null;
-  totalCount: number | null;
+  /** 이 이벤트의 누적 완료 세션 수(동일인 반복 참여도 각각 카운트). */
+  totalSessions: number | null;
 };
 
 interface BookingMeta {
@@ -48,6 +52,23 @@ interface BookingMeta {
   time:       string;   // "18시 00분"
 }
 
+/**
+ * hold/confirm/seat-fetch 호출 대상. 기본값은 실시간 티켓팅(`@/lib/live`)이며,
+ * 이벤트 티켓팅처럼 다른 API(`@/lib/events`)를 써야 하면 주입한다.
+ * 응답 shape는 LiveSeatMap/LiveHold/LiveConfirmResult와 동일해야 한다.
+ */
+interface LiveApi {
+  getSeats: (sessionId: string) => Promise<LiveSeatMap>;
+  holdSeat: (sessionId: string, seatLabel: string) => Promise<LiveHold>;
+  confirmSeat: (sessionId: string, seatLabel: string) => Promise<LiveConfirmResult>;
+}
+
+const DEFAULT_LIVE_API: LiveApi = {
+  getSeats: getLiveSeats,
+  holdSeat: apiHoldSeat,
+  confirmSeat: apiConfirmSeat,
+};
+
 interface LiveModeConfig {
   /** POST /sessions 로 발급된 활성 세션 ID */
   sessionId: string;
@@ -55,6 +76,8 @@ interface LiveModeConfig {
   roundId: number;
   /** confirm 성공 시 상위(RoundDetailClient)로 결과 전달 */
   onConfirmed?: (result: LiveConfirmResult, seatLabel: string) => void;
+  /** hold/confirm/seat-fetch API. 미지정 시 실시간 티켓팅(`@/lib/live`) 기본값 사용. */
+  api?: LiveApi;
 }
 
 interface Props {
@@ -71,6 +94,8 @@ interface Props {
   skipCaptcha?: boolean;
   resultPath?: string;
   onBack?:     () => void;
+  /** 연습 완료 팝업의 [랭킹 보러가기] 클릭 훅. 미지정 시 버튼 숨김. */
+  onViewRanking?: () => void;
   /**
    * 라이브 미리보기 모드. 지정 시:
    * - 이 배열에 속한 좌석만 선택 가능
@@ -80,7 +105,7 @@ interface Props {
   liveSeatLabels?: string[];
   /**
    * 실전 라이브 모드. 지정 시:
-   * - CAPTCHA / 랜덤 taken 시뮬레이션 스킵
+   * - 랜덤 taken 시뮬레이션 스킵 (CAPTCHA는 그대로 노출, skipCaptcha prop으로 별도 제어)
    * - useLiveSeats 로 좌석 상태 구독 (2초 폴링)
    * - 좌석 클릭 → holdSeat, 완료 → confirmSeat 실제 호출
    * - MAX_SEATS=1 강제 (백엔드는 세션당 hold 1좌석만 허용)
@@ -90,9 +115,10 @@ interface Props {
 
 export default function BookingFlow({
   venue, meta, mode, sessionId, startedAt, skipCaptcha = false, resultPath, onBack,
-  liveSeatLabels, liveMode,
+  onViewRanking, liveSeatLabels, liveMode,
 }: Props) {
   const isLive = !!liveMode;
+  const liveApi = liveMode?.api ?? DEFAULT_LIVE_API;
   // 라이브: 세션당 hold 1좌석만 허용 (백엔드 정책). 나머지 모드는 4좌석까지.
   const MAX_SEATS = isLive ? 1 : 4;
   const liveSeatSet = useMemo(
@@ -100,15 +126,13 @@ export default function BookingFlow({
     [liveSeatLabels],
   );
   const router = useRouter();
-  // 라이브 모드는 CAPTCHA/랜덤 시뮬 스킵. 실전 티켓팅 UX 순수 재현.
-  const initialStep: Step = isLive ? 'zone' : (skipCaptcha ? 'zone' : 'captcha');
+  // 라이브 모드도 CAPTCHA는 그대로 노출 (부정예매 방지). skipCaptcha prop으로만 제어.
+  const initialStep: Step = skipCaptcha ? 'zone' : 'captcha';
   const [step,         setStep]         = useState<Step>(initialStep);
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null);
   const [selected,     setSelected]     = useState<SelectedSeat[]>([]);
-  const { user, guestNickname } = useAuth();
   const [elapsedMs,      setElapsedMs]      = useState(0);
   const [sessionResult,  setSessionResult]  = useState<SessionResult | null>(null);
-  const [ticket,         setTicket]         = useState<TicketData | null>(null);
   const [bookedSeats,    setBookedSeats]    = useState<Set<string>>(new Set());
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -120,7 +144,7 @@ export default function BookingFlow({
     refetch: refetchSeats,
     onHoldSuccess,
     onConfirmSuccess,
-  } = useLiveSeats(isLive ? liveMode!.sessionId : null);
+  } = useLiveSeats(isLive ? liveMode!.sessionId : null, liveApi.getSeats);
   const { nowServer } = useServerTime();
   const [liveInlineError, setLiveInlineError] = useState<string | null>(null);
   const [holdPending, setHoldPending] = useState(false);
@@ -273,7 +297,7 @@ export default function BookingFlow({
       if (myHold?.seatLabel === seat.id) return;
       setLiveInlineError(null);
       setHoldPending(true);
-      apiHoldSeat(liveMode.sessionId, seat.id)
+      liveApi.holdSeat(liveMode.sessionId, seat.id)
         .then((hold) => {
           onHoldSuccess(hold);
         })
@@ -307,7 +331,7 @@ export default function BookingFlow({
       if (prev.length >= MAX_SEATS) return prev;
       return [...prev, seat];
     });
-  }, [isLive, liveMode, myHold, onHoldSuccess, refetchSeats, MAX_SEATS]);
+  }, [isLive, liveMode, liveApi, myHold, onHoldSuccess, refetchSeats, MAX_SEATS]);
 
   const handleRemoveSeat = (id: string) =>
     setSelected(prev => prev.filter(s => s.id !== id));
@@ -325,7 +349,7 @@ export default function BookingFlow({
       setLiveInlineError(null);
       setConfirmPending(true);
       try {
-        const res = await apiConfirmSeat(liveMode.sessionId, target);
+        const res = await liveApi.confirmSeat(liveMode.sessionId, target);
         onConfirmSuccess(target);
         setConfirmed(res);
         if (process.env.NODE_ENV !== 'production') {
@@ -368,27 +392,7 @@ export default function BookingFlow({
       }
     }
 
-    /* 티켓 데이터 생성 */
-    const issuedAt = new Date();
-    const dateStr = `${issuedAt.getFullYear()}${String(issuedAt.getMonth() + 1).padStart(2, '0')}${String(issuedAt.getDate()).padStart(2, '0')}`;
-    const stubBuf = new Uint32Array(1);
-    crypto.getRandomValues(stubBuf);
-    const stubNum = String(stubBuf[0] % 100000).padStart(5, '0');
-    const nickname = user?.name || guestNickname || '게스트';
-    setTicket({
-      eventTitle:     meta.eventTitle,
-      seat:           selected.map(s => s.label).join(', '),
-      nickname,
-      elapsedMs:      result?.elapsedMs ?? elapsedMs,
-      // ranked === false면 rank 필드는 모두 null이므로 그대로 전달 (TicketModal에서 방어)
-      // API 실패로 result === null인 경우도 ranked=false로 취급해 UI 방어
-      ranked:         result?.ranked ?? false,
-      rankNumber:     result?.rankNumber ?? null,
-      totalCount:     result?.totalCount ?? null,
-      rankPercentile: result?.rankPercentile ?? null,
-      serial:         `TR-${dateStr}-${stubNum}`,
-      issuedAt,
-    });
+    setStep('done');
 
     if (mode === 'live') {
       setStep('done');
@@ -476,61 +480,6 @@ export default function BookingFlow({
               />
             </div>
           )}
-          {step === 'done' && mode === 'practice' && (
-            <div className="card p-8 text-center space-y-4">
-              <span className="badge badge-success text-sm px-4 py-1.5">연습 완료</span>
-              <p className="text-2xl font-bold text-text">
-                소요 시간:{' '}
-                <span className="text-primary font-mono-tabular">
-                  {((sessionResult?.elapsedMs ?? elapsedMs) / 1000).toFixed(3)}s
-                </span>
-              </p>
-
-              {sessionResult?.ranked && sessionResult.rankNumber !== null && sessionResult.totalCount !== null && sessionResult.rankPercentile !== null && (
-                <div className="flex justify-center gap-6 py-3 border-y border-border">
-                  <div>
-                    <p className="text-xs text-text-secondary mb-0.5">내 순위</p>
-                    <p className="text-lg font-bold text-text font-mono-tabular">
-                      {sessionResult.rankNumber}
-                      <span className="text-sm font-normal text-text-secondary ml-0.5">
-                        / {sessionResult.totalCount}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="w-px bg-border" />
-                  <div>
-                    <p className="text-xs text-text-secondary mb-0.5">상위</p>
-                    <p className="text-lg font-bold text-primary font-mono-tabular">
-                      {sessionResult.rankPercentile.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {sessionResult && !sessionResult.ranked && (
-                <div className="mx-auto max-w-sm rounded-lg border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
-                  다른 게스트가 먼저 사용한 닉네임이라 랭킹에 반영되지 않았습니다.
-                </div>
-              )}
-
-              <p className="text-sm text-text-secondary">
-                선택 좌석: {selected.map(s => s.label).join(', ')}
-              </p>
-              <button
-                className="btn btn-neutral btn-sm"
-                onClick={() => {
-                  setStep('zone');
-                  setActiveZoneId(null);
-                  setSelected([]);
-                  setElapsedMs(0);
-                  setSessionResult(null);
-                  setTicket(null);
-                }}
-              >
-                다시 연습하기
-              </button>
-            </div>
-          )}
         </div>
 
         {/* 우측 패널 */}
@@ -553,15 +502,21 @@ export default function BookingFlow({
         <CaptchaModal
           onConfirm={handleCaptchaConfirm}
           onCancel={handleCaptchaCancel}
+          cancelLabel={isLive ? '나가기' : undefined}
         />
       )}
 
-      {/* ── 티켓 모달 ── */}
-      {ticket && (
-        <TicketModal
-          {...ticket}
-          onClose={() => setTicket(null)}
-          onRetry={() => { setTicket(null); onBack?.(); }}
+      {/* ── 연습 완료 팝업 ── */}
+      {step === 'done' && mode === 'practice' && (
+        <PracticeResultModal
+          seat={selected.map(s => s.label).join(', ')}
+          elapsedMs={sessionResult?.elapsedMs ?? elapsedMs}
+          ranked={sessionResult?.ranked ?? false}
+          sessionRank={sessionResult?.sessionRank ?? null}
+          totalSessions={sessionResult?.totalSessions ?? null}
+          rankPercentile={sessionResult?.rankPercentile ?? null}
+          onRetry={() => onBack?.()}
+          onViewRanking={onViewRanking}
         />
       )}
     </div>

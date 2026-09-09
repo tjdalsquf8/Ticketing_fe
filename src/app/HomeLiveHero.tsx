@@ -15,7 +15,7 @@ import HomeUpcomingList from './HomeUpcomingList';
 /* ──────────────────────────────────────────
    홈 hero — 진행 중 회차 우선, 없으면 다음 예정
    ─ 좌: 이벤트 정보 + CTA (메인)
-   ─ 우: 포스터 + 유료 이벤트 소형 위젯 (데스크톱), 모바일은 히어로 아래로
+   ─ 우: 포스터 + 이벤트 소형 위젯 (데스크톱), 모바일은 히어로 아래로
    ────────────────────────────────────────── */
 
 function pad2(n: number): string {
@@ -134,7 +134,7 @@ export default function HomeLiveHero() {
           </div>
         </div>
 
-      {/* 우: 포스터 + 유료 이벤트 위젯 (데스크톱 전용, practice 상세 카드와 동일 포스터 스타일) */}
+      {/* 우: 포스터 + 이벤트 위젯 (데스크톱 전용, practice 상세 카드와 동일 포스터 스타일) */}
       <div className="hidden md:flex md:flex-col gap-4">
         <div
           className="relative w-full rounded-xl overflow-hidden aspect-[3/4] bg-[#0b1220]"
@@ -178,7 +178,7 @@ export default function HomeLiveHero() {
       </div>
     </section>
 
-      {/* 모바일: 유료 이벤트 위젯을 히어로 아래로 */}
+      {/* 모바일: 이벤트 위젯을 히어로 아래로 */}
       <div className="md:hidden">
         <HomeUpcomingList />
       </div>

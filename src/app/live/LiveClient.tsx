@@ -1,37 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
-  getLastRound,
   getLiveCurrent,
   getLiveNext,
-  type LastRoundResult,
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
 import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
 import { ApiError } from '@/lib/errors';
+import { useAuth } from '@/contexts/AuthContext';
+import { getRankings, getMyRankings, type RankEntry, type RankingPeriod } from '@/lib/rankings';
+import RankingRows from '@/components/ranking/RankingRows';
 
 /* ──────────────────────────────────────────
    /live 실시간 이벤트 랜딩 — API 실연동
    ─ current 우선 · 없으면 next 로 fallback
    ─ 카운트다운은 useServerTime 으로 drift 보정
-   ─ last-round 로 지난 회차 TOP N 렌더
    ────────────────────────────────────────── */
 
 interface State {
   current: LiveRoundSummary | null;
   next: LiveRoundSummary | null;
-  lastRound: LastRoundResult | null;
   loaded: boolean;
-}
-
-const RANK_BADGE: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
-
-function formatMs(ms: number): string {
-  return (ms / 1000).toFixed(3) + 's';
 }
 
 function pad2(n: number): string {
@@ -48,29 +41,67 @@ function splitCountdown(ms: number): { h: string; m: string; s: string; done: bo
   return { h: pad2(h), m: pad2(m), s: pad2(s), done: false };
 }
 
+const RANK_TABS: { key: 'all' | 'mine'; label: string }[] = [
+  { key: 'all', label: '전체 랭킹' },
+  { key: 'mine', label: '내 기록' },
+];
+
+const RANK_PERIODS: { key: RankingPeriod; label: string }[] = [
+  { key: 'daily', label: '일간' },
+  { key: 'weekly', label: '주간' },
+  { key: 'monthly', label: '월간' },
+];
+
 export default function LiveClient() {
   const [state, setState] = useState<State>({
     current: null,
     next: null,
-    lastRound: null,
     loaded: false,
   });
   const [error, setError] = useState<string | null>(null);
   const { nowServer } = useServerTime();
   const [, setTick] = useState(0);
+  const { user } = useAuth();
+
+  // 실시간 랭킹 섹션 — 전체/내기록 탭 + 기간 필터
+  const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
+  const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
+  const [rankings, setRankings] = useState<RankEntry[]>([]);
+  const [rankLoading, setRankLoading] = useState(true);
+
+  const loadRankings = useCallback(async () => {
+    if (rankTab === 'mine' && !user) {
+      setRankings([]);
+      setRankLoading(false);
+      return;
+    }
+    setRankLoading(true);
+    const fetcher = rankTab === 'mine' ? getMyRankings : getRankings;
+    try {
+      const rows = await fetcher({ mode: 'live', period: rankPeriod });
+      setRankings(rows);
+    } catch {
+      setRankings([]);
+    } finally {
+      setRankLoading(false);
+    }
+  }, [rankTab, rankPeriod, user]);
+
+  useEffect(() => {
+    void loadRankings();
+  }, [loadRankings]);
 
   // 초기 로드
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [c, n, l] = await Promise.allSettled([
+      const [c, n] = await Promise.allSettled([
         getLiveCurrent(),
         getLiveNext(),
-        getLastRound(10),
       ]);
       if (!alive) return;
       // 어느 하나라도 rejected 여도 나머지는 렌더. 에러 메시지는 최소한만.
-      const firstError = [c, n, l].find((r) => r.status === 'rejected') as
+      const firstError = [c, n].find((r) => r.status === 'rejected') as
         | PromiseRejectedResult
         | undefined;
       if (firstError && firstError.reason instanceof ApiError) {
@@ -79,7 +110,6 @@ export default function LiveClient() {
       setState({
         current: c.status === 'fulfilled' ? c.value : null,
         next: n.status === 'fulfilled' ? n.value : null,
-        lastRound: l.status === 'fulfilled' ? l.value : null,
         loaded: true,
       });
     })();
@@ -111,7 +141,7 @@ export default function LiveClient() {
           <h1 className="text-2xl sm:text-3xl font-bold text-text">실시간 이벤트</h1>
         </div>
         <p className="text-sm text-text-secondary">
-          매시간 정각에 자동 오픈. 성공 순위 TOP 10 회원에게 티켓 1매가 지급됩니다.
+          매시간 정각에 자동 오픈. 성공 순위는 실시간 랭킹에서 바로 확인할 수 있습니다.
         </p>
       </header>
 
@@ -129,37 +159,76 @@ export default function LiveClient() {
         <EmptyHero />
       )}
 
-      {/* 지난 회차 TOP */}
+      {/* 실시간 랭킹 */}
       <section className="space-y-5">
-        <div>
-          <h2 className="text-xl font-bold text-text">지난 회차 TOP 10</h2>
-          <p className="text-sm text-text-secondary mt-1">가장 최근 종료된 회차의 순위</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-text">실시간 랭킹</h2>
+            <p className="text-sm text-text-secondary mt-1">소요 시간이 빠른 순으로 정렬됩니다.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+              {RANK_TABS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRankTab(key)}
+                  className={[
+                    'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                    key === rankTab
+                      ? 'bg-bg-surface text-text shadow-xs border border-border'
+                      : 'text-text-secondary hover:text-text',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+              {RANK_PERIODS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRankPeriod(key)}
+                  className={[
+                    'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                    key === rankPeriod
+                      ? 'bg-bg-surface text-text shadow-xs border border-border'
+                      : 'text-text-secondary hover:text-text',
+                  ].join(' ')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {!state.loaded ? (
-          <SkeletonList />
-        ) : state.lastRound && state.lastRound.rankings.length > 0 ? (
-          <ol className="card divide-y divide-border overflow-hidden">
-            {state.lastRound.rankings.map((row) => (
-              <li key={row.rank} className="flex items-center gap-4 px-5 py-3.5">
-                <span className="w-8 text-center font-mono-tabular font-semibold text-text-secondary">
-                  {RANK_BADGE[row.rank] ?? row.rank}
-                </span>
-                <span className="flex-1 text-sm font-medium text-text truncate">
-                  {row.nickname}
-                  {!row.isMember && (
-                    <span className="ml-2 text-[10px] text-text-tertiary">게스트</span>
-                  )}
-                </span>
-                <span className="text-xs text-text-tertiary mr-3 hidden sm:inline">{row.seatLabel}</span>
-                <span className="font-mono-tabular font-bold text-text">{formatMs(row.elapsedMs)}</span>
-              </li>
-            ))}
-          </ol>
-        ) : (
+        {rankTab === 'mine' && !user ? (
           <p className="card p-6 text-sm text-text-secondary text-center">
-            아직 종료된 회차가 없습니다.
+            로그인하면 내 기록을 볼 수 있습니다.
           </p>
+        ) : (
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-bg-subtle">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rankLoading ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  </tr>
+                ) : (
+                  <RankingRows rankings={rankings} />
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
@@ -169,14 +238,13 @@ export default function LiveClient() {
         <ul className="text-sm text-text-secondary space-y-1.5 list-disc list-inside">
           <li>매시간 정각에 자동으로 오픈됩니다.</li>
           <li>
-            성공한 사람 중 소요 시간이 가장 빠른{' '}
-            <strong className="text-text">TOP 10</strong> 회원에게 티켓 1매가 지급됩니다.
+            성공한 사람은 소요 시간 기준으로{' '}
+            <strong className="text-text">실시간 랭킹</strong>에 바로 반영됩니다.
           </li>
           <li>
-            게스트도 참여 가능하지만 티켓 획득·리더보드 등재는{' '}
+            게스트도 참여 가능하지만 리더보드 등재는{' '}
             <strong className="text-text">회원 전용</strong>입니다.
           </li>
-          <li>모은 티켓은 리더보드 순위와 유료 이벤트 참여권으로 사용됩니다.</li>
         </ul>
       </section>
 
@@ -274,10 +342,6 @@ function HeroCard({
           >
             대기실 입장
           </Link>
-          <p className="text-[11px] text-text-tertiary">
-            게스트도 참여 가능하지만, 티켓 지급은{' '}
-            <strong className="text-text-secondary">회원</strong>만 대상입니다.
-          </p>
         </div>
 
       {/* 포스터 카드 (practice 상세와 동일 스타일) */}
@@ -348,19 +412,5 @@ function SkeletonHero() {
       </div>
       <div className="hidden md:block aspect-[3/4] rounded-xl bg-bg-subtle" />
     </section>
-  );
-}
-
-function SkeletonList() {
-  return (
-    <ol className="card divide-y divide-border overflow-hidden animate-pulse">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <li key={i} className="flex items-center gap-4 px-5 py-3.5">
-          <span className="w-8 h-4 rounded bg-bg-subtle" />
-          <span className="flex-1 h-4 rounded bg-bg-subtle" />
-          <span className="w-16 h-4 rounded bg-bg-subtle" />
-        </li>
-      ))}
-    </ol>
   );
 }

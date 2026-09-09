@@ -4,14 +4,12 @@ import Link from 'next/link';
 import { useEffect, useState, use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getEvent, type EventDetail } from '@/lib/events';
-import { getTicket, type TicketDetail } from '@/lib/tickets';
 import { ApiError } from '@/lib/errors';
 
 /* ──────────────────────────────────────────
    /event/[id]/result — 이벤트 결과
    ─ book 페이지의 confirm 성공 후 이동. 쿼리:
-     ?seat=<label>&rank=<n>&elapsed=<ms>&ticket=<ticketId?>
-   ─ 티켓 발급된 경우 GET /api/tickets/:ticketId 로 상세 조회 (percentile 포함)
+     ?seat=<label>&rank=<n>&elapsed=<ms>
    ────────────────────────────────────────── */
 
 function formatMs(ms: number) {
@@ -29,14 +27,11 @@ export default function EventResultPage({
   const seatLabel = sp.get('seat');
   const rankRaw = sp.get('rank');
   const elapsedRaw = sp.get('elapsed');
-  const ticketIdRaw = sp.get('ticket');
 
   const rank = rankRaw ? Number(rankRaw) : null;
   const elapsedMs = elapsedRaw ? Number(elapsedRaw) : null;
-  const ticketId = ticketIdRaw ? Number(ticketIdRaw) : null;
 
   const [event, setEvent] = useState<EventDetail | null>(null);
-  const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,15 +41,7 @@ export default function EventResultPage({
     });
   }, [id]);
 
-  useEffect(() => {
-    if (!ticketId) return;
-    getTicket(ticketId).then(setTicket).catch(() => {
-      // 티켓 상세 조회 실패는 조용히 무시 — 쿼리스트링 값으로 요약만 표시
-    });
-  }, [ticketId]);
-
   const hasResult = seatLabel !== null && rank !== null && elapsedMs !== null;
-  const isRewarded = ticketId !== null && rank !== null && rank > 0 && rank <= 10;
 
   // 이벤트 종료 후 URL 직접 접근 등 결과 데이터가 없는 케이스
   if (!hasResult) {
@@ -64,12 +51,12 @@ export default function EventResultPage({
           <div className="space-y-2">
             <h1 className="text-xl font-bold text-text">결과가 없습니다</h1>
             <p className="text-sm text-text-secondary">
-              이벤트에 참여했다면 마이페이지에서 내 티켓·신청 내역을 확인할 수 있습니다.
+              이벤트에 참여했다면 마이페이지에서 신청 내역을 확인할 수 있습니다.
             </p>
           </div>
           <div className="flex gap-2 justify-center">
-            <Link href="/my/tickets" className="btn btn-outline">
-              내 티켓
+            <Link href="/my" className="btn btn-outline">
+              마이페이지
             </Link>
             <Link href="/event" className="btn btn-solid">
               이벤트 목록
@@ -84,14 +71,7 @@ export default function EventResultPage({
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-10 space-y-8">
       {/* 헤더 */}
       <header className="text-center space-y-3">
-        <div
-          className={[
-            'mx-auto w-14 h-14 rounded-full flex items-center justify-center border',
-            isRewarded
-              ? 'bg-success-bg border-success-border'
-              : 'bg-bg-subtle border-border',
-          ].join(' ')}
-        >
+        <div className="mx-auto w-14 h-14 rounded-full flex items-center justify-center border bg-success-bg border-success-border">
           <svg
             width="28"
             height="28"
@@ -101,16 +81,14 @@ export default function EventResultPage({
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className={isRewarded ? 'text-success-text' : 'text-text-secondary'}
+            className="text-success-text"
             aria-hidden="true"
           >
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-text">
-            {isRewarded ? 'TOP 10 진입! 티켓 발급 완료' : '예매에 성공했어요'}
-          </h1>
+          <h1 className="text-2xl font-bold text-text">예매에 성공했어요</h1>
           {event && (
             <p className="text-sm text-text-secondary">
               {event.category} · {event.title}
@@ -144,31 +122,6 @@ export default function EventResultPage({
               {seatLabel}
             </p>
           </div>
-          {ticket?.rankPercentile !== undefined && ticket?.rankPercentile !== null && (
-            <div>
-              <p className="text-xs text-text-tertiary">상위</p>
-              <p className="mt-1 font-mono-tabular font-semibold text-primary">
-                {ticket.rankPercentile.toFixed(1)}%
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div
-          className={[
-            'rounded-lg px-4 py-3 border text-sm',
-            isRewarded
-              ? 'bg-success-bg border-success-border text-success-text'
-              : 'bg-bg-subtle border-border text-text-secondary',
-          ].join(' ')}
-        >
-          {isRewarded ? (
-            <span>
-              🎟 <strong>티켓 1매 지급 완료</strong> · 마이페이지에서 확인하세요
-            </span>
-          ) : (
-            <span>TOP 10 안에 들면 티켓이 지급됩니다. 다음 이벤트에 도전해 보세요.</span>
-          )}
         </div>
       </div>
 
@@ -183,11 +136,6 @@ export default function EventResultPage({
         <Link href="/ranking" className="btn btn-neutral flex-1">
           리더보드
         </Link>
-        {isRewarded && (
-          <Link href={`/my/tickets/${ticketId}`} className="btn btn-outline flex-1">
-            내 티켓
-          </Link>
-        )}
         <Link href="/event" className="btn btn-solid flex-1">
           다음 이벤트
         </Link>

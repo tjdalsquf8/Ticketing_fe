@@ -27,12 +27,9 @@ export const ROUTES = {
     me: `${BASE_URL}/guests/me`,
   },
   events: `${BASE_URL}/events`,
+  venue: (slug: string) => `${BASE_URL}/venues/${slug}`,
   eventsRankingsLatest: (limit = 100) =>
     `${BASE_URL}/events/rankings/latest?limit=${limit}`,
-  tickets: {
-    me: `${BASE_URL}/tickets/me`,
-    detail: (ticketId: number | string) => `${BASE_URL}/tickets/${ticketId}`,
-  },
   orders: `${BASE_URL}/orders`,
   practice: {
     sessions: `${BASE_URL}/practice/sessions`,
@@ -72,6 +69,8 @@ export const ROUTES = {
     liveRoundStats: (roundId: number | string) =>
       `${BASE_URL}/admin/live/rounds/${roundId}/stats`,
     liveCronRun: `${BASE_URL}/admin/live/cron/run`,
+    /** 임시 테스트용 — 지금 시각 기준으로 라운드 즉시 생성. 정식 배포 전 제거 대상. */
+    liveRoundCreateNow: `${BASE_URL}/admin/live/rounds/create-now`,
     eventStats: (eventId: number | string) =>
       `${BASE_URL}/admin/events/${eventId}/stats`,
     gifticons: `${BASE_URL}/admin/gifticons`,

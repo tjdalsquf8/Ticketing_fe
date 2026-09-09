@@ -68,9 +68,6 @@ export interface TicketingDetailLayoutProps {
   backLabel?: string;
   onBack?: () => void;
 
-  /** 우측 상단 참여비 뱃지 (event 전용). */
-  entryFeeLabel?: string;
-
   /** CTA 아래 추가 노트(예: 로그인 안내). */
   ctaFootnote?: React.ReactNode;
 }
@@ -82,13 +79,13 @@ const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const DEFAULT_MODE_LABEL: Record<TicketingMode, string> = {
   practice: '연습 모드 · 무료 체험',
   live: '실시간 · 매시 정각 오픈',
-  event: '유료 이벤트 · 사전 신청',
+  event: '이벤트 · 사전 신청',
 };
 
 const DEFAULT_CTA_LABEL: Record<TicketingMode, string> = {
   practice: '예매하기',
-  live: '대기실 입장',
-  event: '대기실 입장',
+  live: '예매하기',
+  event: '예매하기',
 };
 
 const MODE_POSTER_KICKER: Record<TicketingMode, string> = {
@@ -143,7 +140,6 @@ export default function TicketingDetailLayout(props: TicketingDetailLayoutProps)
     backHref = '/event',
     backLabel = '← 다른 이벤트 선택',
     onBack,
-    entryFeeLabel,
     ctaFootnote,
   } = props;
 
@@ -212,9 +208,6 @@ export default function TicketingDetailLayout(props: TicketingDetailLayoutProps)
             </h1>
             <p className="text-sm text-text-secondary">{venueName}</p>
           </div>
-          {entryFeeLabel && (
-            <span className="badge badge-warning shrink-0">{entryFeeLabel}</span>
-          )}
         </div>
 
         {/* 메인 그리드: 좌측(포스터) + 중앙(정보표) + 우측(사이드바) */}

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     default: "TICKET RUSH — 선착순 티켓팅 트레이닝",
   },
   description:
-    "실전과 동일한 선착순 예매를 연습하고, 성공 시 실물 티켓을 발급받아 리워드로 교환하세요.",
+    "실전과 동일한 선착순 예매를 연습하고, 실시간 매치와 이벤트에서 실력을 겨뤄보세요.",
 };
 
 export const viewport: Viewport = {

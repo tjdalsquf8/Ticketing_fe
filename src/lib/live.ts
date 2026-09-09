@@ -60,11 +60,10 @@ export interface LiveHold {
   expiresAt: string;
 }
 
-/** POST /api/live/sessions/:sessionId/confirm. ticketId 는 회원 && rankNumber<=10 만. */
+/** POST /api/live/sessions/:sessionId/confirm. */
 export interface LiveConfirmResult {
   rankNumber: number;
   elapsedMs: number;
-  ticketId: number | null;
 }
 
 export interface LastRoundResult {
@@ -137,13 +136,13 @@ export function holdSeat(sessionId: string, seatLabel: string) {
 }
 
 /**
- * 좌석 확정. clientElapsedMs 없음 (서버 계산). 회원 TOP10 만 ticketId 발급.
+ * 좌석 확정. clientElapsedMs 없음 (서버 계산).
  *
  * 방어적 정규화:
- *   백엔드가 camelCase 계약을 지키지 못하고 snake_case (`ticket_id`, `rank_number`,
- *   `elapsed_ms`) 로 응답하는 경우에도 프론트가 오분기(회원-missed)로 빠지지 않도록
- *   응답 원본을 관대한 매핑으로 흡수해 통일된 `LiveConfirmResult`로 반환한다.
- *   필드가 실제로 없으면 그대로 null / 0 을 유지 → 백엔드 계약 위반은 그때만 드러난다.
+ *   백엔드가 camelCase 계약을 지키지 못하고 snake_case (`rank_number`, `elapsed_ms`)
+ *   로 응답하는 경우에도 프론트가 오분기하지 않도록 응답 원본을 관대한 매핑으로
+ *   흡수해 통일된 `LiveConfirmResult`로 반환한다. 필드가 실제로 없으면 0을 유지
+ *   → 백엔드 계약 위반은 그때만 드러난다.
  */
 export async function confirmSeat(
   sessionId: string,
@@ -178,13 +177,7 @@ export async function confirmSeat(
       (raw as Record<string, unknown>)?.elapsed,
     ) ?? 0;
 
-  const ticketId = pickNumber(
-    (raw as Record<string, unknown>)?.ticketId,
-    (raw as Record<string, unknown>)?.ticket_id,
-    (raw as Record<string, unknown>)?.ticketID,
-  );
-
-  const normalized: LiveConfirmResult = { rankNumber, elapsedMs, ticketId };
+  const normalized: LiveConfirmResult = { rankNumber, elapsedMs };
 
   if (process.env.NODE_ENV !== "production" && typeof console !== "undefined") {
     const rawKeys =
@@ -197,13 +190,6 @@ export async function confirmSeat(
       "normalized:",
       normalized,
     );
-    if (ticketId === null && rankNumber > 0 && rankNumber <= 10) {
-      console.warn(
-        "[live] confirmSeat: rank<=10 인데 ticketId 없음. " +
-          "회원 계정으로 호출했다면 백엔드 계약(rank<=10 → ticketId 발급) 위반 의심. raw =",
-        raw,
-      );
-    }
   }
 
   return normalized;

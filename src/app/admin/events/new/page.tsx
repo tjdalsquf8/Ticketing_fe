@@ -37,7 +37,6 @@ export default function AdminEventNewPage() {
   const [venueId, setVenueId] = useState('');
   const [opensAt, setOpensAt] = useState('');
   const [totalSeats, setTotalSeats] = useState('');
-  const [entryFeePoints, setEntryFeePoints] = useState('10');
   const [prize, setPrize] = useState('');
   const [errors, setErrors] = useState<EventFormErrors>({});
   const [pending, setPending] = useState(false);
@@ -71,7 +70,7 @@ export default function AdminEventNewPage() {
     setSubmitError(null);
     const found = validateEventForm({
       title, category, venueId, opensAt, totalSeats,
-      entryFeePoints, prize,
+      prize,
     });
     setErrors(found);
     if (hasErrors(found)) return;
@@ -83,7 +82,7 @@ export default function AdminEventNewPage() {
         category: BE_CATEGORY_MAP[category],
         venueId,
         opensAt: new Date(opensAt).toISOString(),
-        entryFeePoints: Number(entryFeePoints),
+        entryFeePoints: 0,
         prize: prize.trim(),
         posterColor: DEFAULT_POSTER_COLOR,
       });
@@ -213,19 +212,6 @@ export default function AdminEventNewPage() {
             </Field>
           </div>
 
-          <Field label="참여비 (티켓)" required error={errors.entryFeePoints}>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={LIMITS.entryFeePoints.min}
-              max={LIMITS.entryFeePoints.max}
-              step={1}
-              value={entryFeePoints}
-              onChange={(e) => setEntryFeePoints(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border border-border bg-bg-surface text-text font-mono-tabular focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </Field>
-
           <Field label="상품" required hint="TOP 지급 상품 설명" error={errors.prize}>
             <TextInput
               value={prize}
@@ -267,9 +253,6 @@ export default function AdminEventNewPage() {
               <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/40 backdrop-blur-sm text-[10px] font-semibold text-white z-10">
                 {category}
               </div>
-              <div className="absolute top-2 right-2 z-10">
-                <span className="badge badge-primary">유료</span>
-              </div>
             </div>
             <div className="p-4 space-y-1.5">
               <p className="text-sm font-bold text-text truncate">
@@ -282,7 +265,7 @@ export default function AdminEventNewPage() {
                 {opensAt ? new Date(opensAt).toLocaleString('ko-KR') : '(오픈 시각 미설정)'}
               </p>
               <p className="text-xs text-primary font-semibold pt-1">
-                참여비 {Number(entryFeePoints || 0).toLocaleString()}매 · {prize || '(상품 미입력)'}
+                {prize || '(상품 미입력)'}
               </p>
             </div>
           </div>

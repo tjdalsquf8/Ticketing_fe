@@ -213,7 +213,7 @@ export function getEvent(eventId: number | string) {
   return apiFetch<EventDetail>(`${EVENTS_BASE}/${eventId}`);
 }
 
-/** POST /api/events/:eventId/registrations — 사전 신청 (보유 티켓 차감). */
+/** POST /api/events/:eventId/registrations — 사전 신청 (로그인 필수, 무료). */
 export function registerForEvent(eventId: number | string) {
   return apiFetch<Registration>(
     `${EVENTS_BASE}/${eventId}/registrations`,
@@ -267,7 +267,7 @@ export function holdEventSeat(sessionId: string, seatLabel: string) {
 }
 
 /**
- * POST /api/events/sessions/:sessionId/confirm — 좌석 확정 → 티켓 발급.
+ * POST /api/events/sessions/:sessionId/confirm — 좌석 확정.
  * confirmLiveSeat 와 동일한 방어적 normalize 적용 (snake_case 응답 흡수).
  */
 export async function confirmEventSeat(sessionId: string, seatLabel: string) {
@@ -290,9 +290,8 @@ export async function confirmEventSeat(sessionId: string, seatLabel: string) {
     pickNumber(raw?.rankNumber, raw?.rank_number, raw?.rank) ?? 0;
   const elapsedMs =
     pickNumber(raw?.elapsedMs, raw?.elapsed_ms, raw?.elapsed) ?? 0;
-  const ticketId = pickNumber(raw?.ticketId, raw?.ticket_id, raw?.ticketID);
 
-  return { rankNumber, elapsedMs, ticketId };
+  return { rankNumber, elapsedMs };
 }
 
 /* ─────────────────────────────────────────────

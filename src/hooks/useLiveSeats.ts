@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getLiveSeats,
   type LiveHold,
+  type LiveSeatMap,
   type LiveSeatStatus,
 } from '@/lib/live';
 import { ApiError } from '@/lib/errors';
@@ -43,7 +44,10 @@ const FATAL_CODES = new Set([
   'SESSION_ALREADY_COMPLETED',
 ]);
 
-export function useLiveSeats(sessionId: string | null): UseLiveSeatsResult {
+export function useLiveSeats(
+  sessionId: string | null,
+  fetchSeats: (sessionId: string) => Promise<LiveSeatMap> = getLiveSeats,
+): UseLiveSeatsResult {
   const [seatMap, setSeatMap] = useState<Map<string, LiveSeatStatus>>(new Map());
   const [myHold, setMyHold] = useState<MyHold | null>(null);
   const [loading, setLoading] = useState<boolean>(sessionId !== null);
@@ -86,7 +90,7 @@ export function useLiveSeats(sessionId: string | null): UseLiveSeatsResult {
 
     const fetchOnce = async (isFirst: boolean) => {
       try {
-        const snapshot = await getLiveSeats(sessionId);
+        const snapshot = await fetchSeats(sessionId);
         if (!alive) return;
         applySnapshot(snapshot.seats, snapshot.myHold);
         setError(null);
@@ -147,7 +151,7 @@ export function useLiveSeats(sessionId: string | null): UseLiveSeatsResult {
       }
     };
     // refetchTick 을 의존성으로 넣어 refetch() 호출 시 이펙트 재실행.
-  }, [sessionId, refetchTick]);
+  }, [sessionId, refetchTick, fetchSeats]);
 
   const refetch = useCallback(() => {
     setError(null);

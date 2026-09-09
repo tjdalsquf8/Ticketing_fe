@@ -45,7 +45,6 @@ export const LIMITS = {
   prize:            { min: 1,   max: 120 },
   posterInitial:    { min: 0,   max: 8 },
   totalSeats:       { min: 1,   max: 200_000 },
-  entryFeePoints:   { min: 0,   max: 10_000 },
   // BE 스펙: 이벤트 durationMs 최대 24시간. 폼 UI 아직 없지만 향후 대비.
   durationMs:       { min: 1,   max: 24 * 60 * 60 * 1000 },
   // BE 스펙: 이벤트 취소 사유 최대 500자.
@@ -121,7 +120,6 @@ export interface EventFormValues {
   venueId: string;
   opensAt: string;
   totalSeats: string;
-  entryFeePoints: string;
   prize: string;
 }
 
@@ -129,7 +127,7 @@ export type EventFormErrors = Partial<Record<keyof EventFormValues, string>>;
 
 /**
  * 폼 전체 검증. 에러 맵 반환 — 비어 있으면 통과.
- * 관리자 폼은 항상 유료(paid) 이벤트를 개설한다 (라이브는 별도 페이지에서 관리).
+ * 관리자 폼은 항상 사전 신청 이벤트를 개설한다 (라이브는 별도 페이지에서 관리).
  * 포스터 이니셜/배경 색상은 공연장 대표 이미지로 대체되어 폼 필드 자체가 사라졌다.
  */
 export function validateEventForm(v: EventFormValues): EventFormErrors {
@@ -176,9 +174,6 @@ export function validateEventForm(v: EventFormValues): EventFormErrors {
     errors.totalSeats = `총 좌석은 ${LIMITS.totalSeats.min}~${LIMITS.totalSeats.max.toLocaleString()} 정수여야 합니다.`;
   }
 
-  if (parseIntegerInRange(v.entryFeePoints, LIMITS.entryFeePoints) === null) {
-    errors.entryFeePoints = `참여비(티켓)는 ${LIMITS.entryFeePoints.min}~${LIMITS.entryFeePoints.max.toLocaleString()} 정수여야 합니다.`;
-  }
   const prize = sanitizeLine(v.prize);
   if (prize.length < LIMITS.prize.min) {
     errors.prize = '상품 내용을 입력해 주세요.';

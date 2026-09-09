@@ -23,7 +23,7 @@ import { safeHexColor, safeImageUrl } from '@/lib/safe';
    /event/[id] — 이벤트 상세 (클라이언트)
    ─ GET /api/events/:id (로그인 시 myRegistration 포함)
    ─ 상태: scheduled → 신청 필요 · 오픈 대기 · 티켓팅 참여
-   ─ 액션: 신청(보유 티켓 차감) · 취소(전액 환불) · 티켓팅 진입
+   ─ 액션: 신청(무료, 로그인 필수) · 취소 · 티켓팅 진입
    ────────────────────────────────────────── */
 
 interface EventDetailClientProps {
@@ -43,7 +43,7 @@ function formatDateTime(iso: string): string {
 
 export default function EventDetailClient({ eventId }: EventDetailClientProps) {
   const router = useRouter();
-  const { user, refreshMe } = useAuth();
+  const { user } = useAuth();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [isLoading, setLoading] = useState(true);
@@ -143,7 +143,6 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
       await registerForEvent(event.eventId);
       setModalOpen(false);
       await load();
-      refreshMe();
     } catch (err) {
       if (err instanceof ApiError) {
         setModalError(err.message);
@@ -153,13 +152,13 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     } finally {
       setModalPending(false);
     }
-  }, [event, modalPending, load, refreshMe]);
+  }, [event, modalPending, load]);
 
   const handleCancelRegistration = useCallback(async () => {
     if (!event || cancelPending) return;
     const deadlineText = formatKstDateTime(event.registrationDeadline);
     const ok = window.confirm(
-      `신청을 취소하고 참여비(티켓)를 환불받으시겠어요? 환불은 신청 마감 시각(${deadlineText})까지만 가능합니다.`,
+      `신청을 취소하시겠어요? 취소는 신청 마감 시각(${deadlineText})까지만 가능합니다.`,
     );
     if (!ok) return;
     setCancelPending(true);
@@ -167,7 +166,6 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     try {
       await cancelEventRegistration(event.eventId);
       await load();
-      refreshMe();
     } catch (err) {
       if (err instanceof ApiError) {
         setInlineError(err.message);
@@ -177,7 +175,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     } finally {
       setCancelPending(false);
     }
-  }, [event, cancelPending, load, refreshMe]);
+  }, [event, cancelPending, load]);
 
   // ── 로딩/에러/404 케이스 ────────────────
   if (isLoading) {
@@ -268,25 +266,17 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
         </span>
       ),
     },
-    {
-      label: '참여비',
-      value: (
-        <span className="font-mono-tabular">
-          {event.entryFeePoints.toLocaleString()}매
-        </span>
-      ),
-    },
     { label: '상품', value: event.prize },
   ];
 
-  const refundDeadlineMs = event ? Date.parse(event.registrationDeadline) : 0;
-  const canRefund = nowMs < refundDeadlineMs;
+  const cancelDeadlineMs = event ? Date.parse(event.registrationDeadline) : 0;
+  const canCancel = nowMs < cancelDeadlineMs;
   const deadlineText = event ? formatKstDateTime(event.registrationDeadline) : '';
 
   const rules: string[] = [
     '이벤트는 오픈 시각부터 진행됩니다.',
-    '성공한 사람 중 소요 시간 TOP 10 회원에게 티켓 1매가 지급됩니다.',
-    `참여비는 신청 마감 시각(${deadlineText}) 전까지 취소 시 전액 환불됩니다.`,
+    '소요 시간 TOP 3에게 기프티콘이 즉시 지급됩니다.',
+    `신청 마감 시각(${deadlineText}) 전까지 취소할 수 있습니다.`,
   ];
 
   const regStatus = registration?.status;
@@ -299,7 +289,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     if (regStatus === 'ticketed') {
       return (
         <span className="text-success-text font-medium">
-          🎟 티켓 발급 완료 · 마이페이지 &gt; 내 티켓에서 확인
+          TOP 10 진입 · 결과가 확정됐습니다
         </span>
       );
     }
@@ -320,7 +310,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     if (regStatus === 'cancelled' || regStatus === 'refunded') {
       return (
         <span className="text-text-secondary">
-          이전에 취소·환불된 신청입니다. 다시 신청할 수 있어요.
+          이전에 취소된 신청입니다. 다시 신청할 수 있어요.
         </span>
       );
     }
@@ -332,18 +322,18 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
       return (
         <span className="flex items-center gap-2 flex-wrap">
           <span className="text-success-text font-medium">{message}</span>
-          {canRefund ? (
+          {canCancel ? (
             <button
               type="button"
               onClick={handleCancelRegistration}
               disabled={cancelPending}
               className="text-xs text-text-tertiary underline underline-offset-2 hover:text-danger-text disabled:opacity-50"
             >
-              {cancelPending ? '취소 중…' : '신청 취소·환불'}
+              {cancelPending ? '취소 중…' : '신청 취소'}
             </button>
           ) : (
             <span className="text-xs text-text-tertiary">
-              환불 마감({deadlineText}) 경과
+              취소 마감({deadlineText}) 경과
             </span>
           )}
         </span>
@@ -351,8 +341,8 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
     }
     if (isCancelled) return '취소된 이벤트입니다.';
     if (isClosed) return '종료된 이벤트입니다.';
-    if (!user) return '로그인 후 보유 티켓으로 참여 신청할 수 있습니다.';
-    return `참여비는 신청 마감 시각(${deadlineText}) 전까지 전액 환불됩니다.`;
+    if (!user) return '로그인 후 무료로 참여 신청할 수 있습니다.';
+    return `신청 마감 시각(${deadlineText}) 전까지 취소할 수 있습니다.`;
   })();
 
   return (
@@ -372,12 +362,7 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
         canBook={canBook}
         disabledReason={disabledReason}
         onBook={handleBook}
-        ctaLabel={
-          isRegistered
-            ? undefined
-            : `참여 신청 (${event.entryFeePoints.toLocaleString()}매)`
-        }
-        entryFeeLabel={`참여비 ${event.entryFeePoints.toLocaleString()}매`}
+        ctaLabel={isRegistered ? undefined : '참여 신청'}
         backHref="/event"
         backLabel="← 이벤트 목록"
         ctaFootnote={ctaFootnote}
@@ -386,8 +371,6 @@ export default function EventDetailClient({ eventId }: EventDetailClientProps) {
       <EventRegistrationModal
         open={modalOpen}
         eventTitle={event.title}
-        entryFeeTickets={event.entryFeePoints}
-        currentTickets={user?.ticketBalance ?? Number.POSITIVE_INFINITY}
         pending={modalPending}
         errorMessage={modalError}
         onConfirm={handleConfirmRegister}
