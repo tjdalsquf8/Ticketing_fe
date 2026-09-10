@@ -10,7 +10,13 @@ import { apiFetch, ROUTES } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { PracticeEvent } from '@/data/practice';
 import { parseLiveSeatLabel } from '@/data/live/seatLabels';
-import { getRankings, getMyRankings, type RankEntry, type RankingPeriod } from '@/lib/rankings';
+import {
+  getRankings,
+  getMyRankings,
+  type RankEntry,
+  type MyRankEntry,
+  type RankingPeriod,
+} from '@/lib/rankings';
 import RankingTable from '@/components/ranking/RankingTable';
 
 /**
@@ -96,15 +102,10 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
   // 연습 랭킹 섹션 — 전체/내기록 탭 + 기간 필터 (선택된 이벤트로 스코프)
   const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
   const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
-  const [rankings, setRankings] = useState<RankEntry[]>([]);
+  const [rankings, setRankings] = useState<(RankEntry | MyRankEntry)[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
 
   const loadRankings = useCallback(async () => {
-    if (rankTab === 'mine' && !user) {
-      setRankings([]);
-      setRankLoading(false);
-      return;
-    }
     setRankLoading(true);
     const fetcher = rankTab === 'mine' ? getMyRankings : getRankings;
     try {
@@ -115,7 +116,7 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
     } finally {
       setRankLoading(false);
     }
-  }, [event.eventId, rankTab, rankPeriod, user]);
+  }, [event.eventId, rankTab, rankPeriod]);
 
   useEffect(() => {
     void loadRankings();
@@ -413,42 +414,36 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
           </div>
         </div>
 
-        {rankTab === 'mine' && !user ? (
-          <p className="card p-6 text-sm text-text-secondary text-center">
-            로그인하면 내 기록을 볼 수 있습니다.
-          </p>
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-bg-subtle">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                  {rankTab === 'all' && (
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-                  )}
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {rankLoading ? (
-                  <tr>
-                    <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
-                  </tr>
-                ) : (
-                  <RankingTable
-                    key={`${rankTab}-${rankPeriod}`}
-                    mode="practice"
-                    period={rankPeriod}
-                    eventId={event.eventId}
-                    myRankings={rankTab === 'mine'}
-                    initialRows={rankings}
-                    showNickname={rankTab === 'all'}
-                  />
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-bg-subtle">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
+                {rankTab === 'all' && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
                 )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rankLoading ? (
+                <tr>
+                  <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                </tr>
+              ) : (
+                <RankingTable
+                  key={`${rankTab}-${rankPeriod}`}
+                  mode="practice"
+                  period={rankPeriod}
+                  eventId={event.eventId}
+                  myRankings={rankTab === 'mine'}
+                  initialRows={rankings}
+                  showNickname={rankTab === 'all'}
+                />
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
     {/* 대기 화면 오버레이 */}

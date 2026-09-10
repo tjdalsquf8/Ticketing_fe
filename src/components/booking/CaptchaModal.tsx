@@ -12,10 +12,11 @@ const gen = () => Array.from({ length: 6 }, () => CHARS[Math.floor(Math.random()
 interface Props {
   onConfirm: () => void;
   onCancel:  () => void;
+  /** 지정하지 않으면 취소 버튼 자체를 렌더하지 않는다(입력완료만 노출). */
   cancelLabel?: string;
 }
 
-export default function CaptchaModal({ onConfirm, onCancel, cancelLabel = '날짜 다시 선택' }: Props) {
+export default function CaptchaModal({ onConfirm, onCancel, cancelLabel }: Props) {
   const [code,  setCode]  = useState(gen);
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
@@ -112,7 +113,9 @@ export default function CaptchaModal({ onConfirm, onCancel, cancelLabel = '날�
 
         {/* Buttons */}
         <div className="flex gap-3 px-6 py-5 mt-2">
-          <button onClick={onCancel}  className="btn btn-neutral flex-1">{cancelLabel}</button>
+          {cancelLabel && (
+            <button onClick={onCancel} className="btn btn-neutral flex-1">{cancelLabel}</button>
+          )}
           <button onClick={handleConfirm} className="btn btn-solid flex-1">입력완료</button>
         </div>
 

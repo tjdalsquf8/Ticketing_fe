@@ -9,9 +9,21 @@ import { apiFetch, ROUTES } from "./api";
 export type RankingMode = "practice" | "live";
 export type RankingPeriod = "daily" | "weekly" | "monthly";
 
+/**
+ * 리더보드 한 행. `nickname` 은 **최고기록을 낸 시점의 스냅샷**이지 현재 닉네임이
+ * 아니다 (개명으로 과거 순위를 소급 조작하는 사칭 차단). 응답에 식별자가 없어서
+ * 목록에서 "내 행"을 골라낼 수는 없다 — 내 순위는 getMyBestRanking 으로 따로 받는다.
+ */
 export interface RankEntry {
   rank: number;
   nickname: string;
+  best_ms: number;
+  is_verified: boolean;
+}
+
+/** 내 기록 한 행. 전부 본인 기록이므로 nickname 을 내려주지 않는다. */
+export interface MyRankEntry {
+  rank: number;
   best_ms: number;
   is_verified: boolean;
 }
@@ -25,18 +37,23 @@ function toFiniteNumber(v: unknown): number | null {
   return null;
 }
 
-function normalizeRankEntry(v: unknown): RankEntry | null {
+function normalizeMyRankEntry(v: unknown): MyRankEntry | null {
   if (!v || typeof v !== "object") return null;
   const e = v as Record<string, unknown>;
   const rank = toFiniteNumber(e.rank);
   const best_ms = toFiniteNumber(e.best_ms);
-  if (
-    rank === null ||
-    best_ms === null ||
-    typeof e.nickname !== "string" ||
-    typeof e.is_verified !== "boolean"
-  ) return null;
-  return { rank, nickname: e.nickname, best_ms, is_verified: e.is_verified };
+  if (rank === null || best_ms === null || typeof e.is_verified !== "boolean") {
+    return null;
+  }
+  return { rank, best_ms, is_verified: e.is_verified };
+}
+
+function normalizeRankEntry(v: unknown): RankEntry | null {
+  const base = normalizeMyRankEntry(v);
+  if (base === null) return null;
+  const nickname = (v as Record<string, unknown>).nickname;
+  if (typeof nickname !== "string") return null;
+  return { ...base, nickname };
 }
 
 interface RankingParams {
@@ -82,9 +99,27 @@ export async function getRankings(params: RankingParams): Promise<RankEntry[]> {
   return data.map(normalizeRankEntry).filter((e): e is RankEntry => e !== null);
 }
 
-/** 내 기록. GET /rankings/me */
-export async function getMyRankings(params: RankingParams): Promise<RankEntry[]> {
+/**
+ * 내 기록. GET /rankings/me
+ * 인증 불필요 — 게스트는 guest_uuid 쿠키로 식별된다. 식별 불가 시 빈 배열.
+ */
+export async function getMyRankings(params: RankingParams): Promise<MyRankEntry[]> {
   const data = await apiFetch<unknown[]>(`${ROUTES.rankings}/me?${buildQuery(params)}`);
   if (!Array.isArray(data)) return [];
-  return data.map(normalizeRankEntry).filter((e): e is RankEntry => e !== null);
+  return data.map(normalizeMyRankEntry).filter((e): e is MyRankEntry => e !== null);
+}
+
+/**
+ * 내 최고기록과 순위. GET /rankings/me/best
+ * 리더보드는 상위 100명까지만 내려주므로, 그 밖의 순위를 하단에 고정 표시하려면
+ * 이걸 따로 받아야 한다. rank 는 /rankings 목록의 순위와 일치한다.
+ * 인증 불필요. 식별 불가하거나 완주 기록이 없으면 null.
+ */
+export async function getMyBestRanking(
+  params: Omit<RankingParams, "page">,
+): Promise<RankEntry | null> {
+  const qs = new URLSearchParams({ mode: params.mode, period: params.period });
+  if (params.eventId !== undefined) qs.set("eventId", String(params.eventId));
+  const data = await apiFetch<unknown>(`${ROUTES.rankings}/me/best?${qs.toString()}`);
+  return normalizeRankEntry(data);
 }

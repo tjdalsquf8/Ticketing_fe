@@ -1,6 +1,6 @@
 export const NICKNAME_REGEX = /^[가-힣a-zA-Z0-9_-]+$/;
 export const NICKNAME_MIN = 2;
-export const NICKNAME_MAX = 15;
+export const NICKNAME_MAX = 10;
 
 export function validateNickname(value: string): string | null {
   const v = value.trim();
@@ -36,8 +36,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   GUEST_NOT_FOUND: "게스트 정보를 찾을 수 없습니다.",
   GUEST_NOT_AUTHENTICATED: "게스트 세션을 먼저 시작해 주세요.",
   NICKNAME_REQUIRED: "닉네임을 입력해 주세요.",
-  NICKNAME_CHANGE_TOO_SOON: "닉네임은 1시간에 한 번만 변경할 수 있습니다. 잠시 후 다시 시도해 주세요.",
-  NICKNAME_TAKEN_IN_ROUND: "다른 게스트가 이미 사용 중인 닉네임입니다. 이 회차에서는 다른 닉네임을 입력해 주세요.",
+  TOO_MANY_NICKNAME_CHANGES: "닉네임을 너무 자주 변경했습니다. 잠시 후 다시 시도해 주세요.",
+  TOO_MANY_GUEST_ISSUES: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
   SESSION_NOT_FOUND: "세션을 찾을 수 없습니다.",
   SESSION_ALREADY_COMPLETED: "이미 완료된 세션입니다.",
   SESSION_FORBIDDEN: "본인의 세션이 아닙니다.",

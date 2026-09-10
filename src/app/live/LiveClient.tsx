@@ -11,9 +11,14 @@ import {
 import { useServerTime } from '@/hooks/useServerTime';
 import { getLiveEventByVenueSlug, type LiveEvent } from '@/data/live';
 import { ApiError } from '@/lib/errors';
-import { useAuth } from '@/contexts/AuthContext';
-import { getRankings, getMyRankings, type RankEntry, type RankingPeriod } from '@/lib/rankings';
-import RankingRows from '@/components/ranking/RankingRows';
+import {
+  getRankings,
+  getMyRankings,
+  type RankEntry,
+  type MyRankEntry,
+  type RankingPeriod,
+} from '@/lib/rankings';
+import RankingTable from '@/components/ranking/RankingTable';
 
 /* ──────────────────────────────────────────
    /live 실시간 이벤트 랜딩 — API 실연동
@@ -61,20 +66,14 @@ export default function LiveClient() {
   const [error, setError] = useState<string | null>(null);
   const { nowServer } = useServerTime();
   const [, setTick] = useState(0);
-  const { user } = useAuth();
 
   // 실시간 랭킹 섹션 — 전체/내기록 탭 + 기간 필터
   const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
   const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
-  const [rankings, setRankings] = useState<RankEntry[]>([]);
+  const [rankings, setRankings] = useState<(RankEntry | MyRankEntry)[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
 
   const loadRankings = useCallback(async () => {
-    if (rankTab === 'mine' && !user) {
-      setRankings([]);
-      setRankLoading(false);
-      return;
-    }
     setRankLoading(true);
     const fetcher = rankTab === 'mine' ? getMyRankings : getRankings;
     try {
@@ -85,7 +84,7 @@ export default function LiveClient() {
     } finally {
       setRankLoading(false);
     }
-  }, [rankTab, rankPeriod, user]);
+  }, [rankTab, rankPeriod]);
 
   useEffect(() => {
     void loadRankings();
@@ -204,34 +203,35 @@ export default function LiveClient() {
           </div>
         </div>
 
-        {rankTab === 'mine' && !user ? (
-          <p className="card p-6 text-sm text-text-secondary text-center">
-            로그인하면 내 기록을 볼 수 있습니다.
-          </p>
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-bg-subtle">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                  {rankTab === 'all' && (
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-                  )}
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {rankLoading ? (
-                  <tr>
-                    <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
-                  </tr>
-                ) : (
-                  <RankingRows rankings={rankings} showNickname={rankTab === 'all'} />
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-bg-subtle">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
+                {rankTab === 'all' && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
                 )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rankLoading ? (
+                <tr>
+                  <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                </tr>
+              ) : (
+                <RankingTable
+                  key={`${rankTab}-${rankPeriod}`}
+                  mode="live"
+                  period={rankPeriod}
+                  myRankings={rankTab === 'mine'}
+                  initialRows={rankings}
+                  showNickname={rankTab === 'all'}
+                />
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* 규칙 안내 */}
