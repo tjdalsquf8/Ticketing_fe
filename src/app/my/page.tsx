@@ -77,7 +77,9 @@ export default function MyPage() {
             ) : (
               <>
                 <p className="font-semibold text-text">{displayName}</p>
-                <p className="text-xs text-text-secondary">일반 회원</p>
+                <p className={isAdmin ? 'text-xs font-semibold text-primary' : 'text-xs text-text-secondary'}>
+                  {isAdmin ? '관리자' : '일반 회원'}
+                </p>
               </>
             )}
           </div>
