@@ -27,8 +27,3 @@ export function postGuest(nickname?: string) {
 export function getGuestMe() {
   return apiFetch<Guest>(ROUTES.guests.me);
 }
-
-/** 게스트 정체성 초기화 (쿠키 삭제). 닉네임 변경 시 사용. */
-export function deleteGuestMe() {
-  return apiFetch<null>(ROUTES.guests.me, { method: "DELETE" });
-}

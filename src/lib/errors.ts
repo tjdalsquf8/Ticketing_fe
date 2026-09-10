@@ -1,7 +1,6 @@
 export const NICKNAME_REGEX = /^[가-힣a-zA-Z0-9_-]+$/;
 export const NICKNAME_MIN = 2;
 export const NICKNAME_MAX = 15;
-export const NICKNAME_CHANGE_COOLDOWN_MS = 60 * 60 * 1000; // 1시간
 
 export function validateNickname(value: string): string | null {
   const v = value.trim();
@@ -10,17 +9,6 @@ export function validateNickname(value: string): string | null {
   if (!NICKNAME_REGEX.test(v))
     return "한글, 영문, 숫자, - _ 만 사용할 수 있습니다.";
   return null;
-}
-
-export function formatCooldownRemaining(ms: number): string {
-  if (ms <= 0) return "";
-  const totalMin = Math.ceil(ms / 60_000);
-  if (totalMin >= 60) {
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
-  }
-  return `${totalMin}분`;
 }
 
 export class ApiError extends Error {
