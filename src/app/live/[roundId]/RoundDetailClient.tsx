@@ -426,16 +426,16 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
           clearSessionSnapshot();
           return;
         }
-        // 서버가 강제한 닉네임(immutability) 을 로컬에 동기화
+        // 서버가 확정한 닉네임을 로컬에 동기화
         if (session.nickname) {
           syncGuestNickname(session.nickname);
         }
-        // 게스트가 새로 발급한 닉네임이면 쿨다운 타임스탬프 등록
+        // 이 화면에서 처음 입력한 게스트 닉네임을 guests 테이블에도 반영
         if (!user && nicknameToSend && nicknameToSend === session.nickname) {
           try {
             await setGuestNickname(nicknameToSend);
           } catch {
-            // 쿨다운/규칙 예외 or postGuest 중복 호출 실패는 무시 (쿠키는 이미 확보됨).
+            // 규칙 위반 or postGuest 중복 호출 실패는 무시 (쿠키는 이미 확보됨).
           }
         }
         writeSessionSnapshot({
@@ -454,11 +454,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
           if (err.code === 'ROUND_NOT_OPEN' || err.code === 'ROUND_ALREADY_CLOSED') {
             void loadRound();
           }
-          if (
-            err.code === 'VALIDATION_ERROR' ||
-            err.code === 'NICKNAME_REQUIRED' ||
-            err.code === 'NICKNAME_TAKEN_IN_ROUND'
-          ) {
+          if (err.code === 'VALIDATION_ERROR' || err.code === 'NICKNAME_REQUIRED') {
             setNeedsNickname(true);
             setNicknameError(err.message);
           }
