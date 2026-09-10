@@ -4,11 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  NICKNAME_MAX,
-  formatCooldownRemaining,
-  validateNickname,
-} from '@/lib/errors';
+import { NICKNAME_MAX, validateNickname } from '@/lib/errors';
 
 const NAV = [
   { href: '/',         label: '홈'       },
@@ -184,7 +180,7 @@ export default function Header() {
    ────────────────────────────────────────── */
 
 function GuestNicknameControl({ variant = 'inline' }: { variant?: 'inline' | 'row' }) {
-  const { guestNickname, guestNicknameCooldownUntil, setGuestNickname } = useAuth();
+  const { guestNickname, setGuestNickname } = useAuth();
   const isRow = variant === 'row';
 
   const [editing, setEditing] = useState(false);
@@ -193,27 +189,7 @@ function GuestNicknameControl({ variant = 'inline' }: { variant?: 'inline' | 'ro
   const [committing, setCommitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // 남은 시간 표시가 실시간으로 줄어들도록 현재 시각을 상태로 관리 (쿨다운 활성 시 30초 tick).
-  // 렌더 함수에서 Date.now() 직접 호출은 impure이므로 상태로 뺀다.
-  const [now, setNow] = useState(0);
-  useEffect(() => {
-    queueMicrotask(() => setNow(Date.now()));
-    if (guestNicknameCooldownUntil <= Date.now()) return;
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, [guestNicknameCooldownUntil]);
-
-  const isLocked = now > 0 && guestNicknameCooldownUntil > now;
-  const remainingText = isLocked
-    ? formatCooldownRemaining(guestNicknameCooldownUntil - now)
-    : '';
-
   function startEdit() {
-    // 쿨다운 중이면 편집 모드 진입 자체를 막고 경고 문구만 노출
-    if (isLocked) {
-      setNickError(`닉네임은 1시간에 한 번만 변경할 수 있습니다. ${remainingText} 후 가능합니다.`);
-      return;
-    }
     setDraft(guestNickname);
     setNickError(null);
     setEditing(true);
@@ -249,7 +225,6 @@ function GuestNicknameControl({ variant = 'inline' }: { variant?: 'inline' | 'ro
     }
     setCommitting(true);
     try {
-      // 서버 DELETE 호출이 포함될 수 있으므로 await
       await setGuestNickname(trimmed);
       setNickError(null);
       setEditing(false);
@@ -292,22 +267,15 @@ function GuestNicknameControl({ variant = 'inline' }: { variant?: 'inline' | 'ro
               ? 'flex items-center justify-between w-full px-2 py-2.5 rounded-md text-sm font-medium text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors'
               : 'flex items-center gap-1.5 text-sm text-text-secondary hover:text-text transition-colors'
           }
-          title={isLocked ? `${remainingText} 후 변경 가능` : '닉네임 설정'}
+          title="닉네임 설정"
         >
           <span className={guestNickname ? 'font-medium text-text' : 'text-text-tertiary'}>
             {guestNickname || '닉네임 설정'}
           </span>
-          {isLocked ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-            </svg>
-          ) : (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
-            </svg>
-          )}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z" />
+          </svg>
         </button>
       )}
       {nickError && (

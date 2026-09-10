@@ -9,13 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch, refreshWithLock, ROUTES } from "@/lib/api";
-import { deleteGuestMe, getGuestMe, postGuest } from "@/lib/guests";
-import {
-  NICKNAME_CHANGE_COOLDOWN_MS,
-  NICKNAME_MAX,
-  formatCooldownRemaining,
-  validateNickname,
-} from "@/lib/errors";
+import { getGuestMe, postGuest } from "@/lib/guests";
+import { NICKNAME_MAX, validateNickname } from "@/lib/errors";
 
 interface User {
   id: string;
@@ -33,12 +28,10 @@ interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   guestNickname: string;
-  /** 다음 변경 가능 시각(ms). 0이면 즉시 가능. */
-  guestNicknameCooldownUntil: number;
   /**
-   * 게스트 닉네임 변경. 규칙 위반 시 조용히 무시, 쿨다운 위반/네트워크 실패 시 throw.
-   * 최초 설정이 아닐 때는 `DELETE /api/guests/me`로 서버 쿠키(UUID)를 삭제해
-   * 이전 신원과 완전히 분리한다.
+   * 게스트 닉네임 변경. 규칙 위반 시 조용히 무시, 네트워크 실패 시 throw.
+   * 언제든 변경 가능하며 신원(guest_uuid)은 그대로 유지된다 — 서버에 즉시
+   * 반영(POST /api/guests)해 이후 랭킹도 새 닉네임으로 이어진다.
    */
   setGuestNickname: (name: string) => Promise<void>;
   /**
@@ -57,13 +50,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const USER_KEY = "auth_user";
 const GUEST_NICKNAME_KEY = "guest_nickname";
-const GUEST_NICKNAME_CHANGED_AT_KEY = "guest_nickname_changed_at";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setLoading] = useState(true);
   const [guestNickname, setGuestNicknameState] = useState('');
-  const [guestNicknameChangedAt, setGuestNicknameChangedAt] = useState<number | null>(null);
 
   useEffect(() => {
     // localStorage 하이드레이션: setState는 마이크로태스크로 defer해
@@ -81,11 +72,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const storedNick = localStorage.getItem(GUEST_NICKNAME_KEY);
       if (storedNick) setGuestNicknameState(storedNick);
-      const storedChangedAt = localStorage.getItem(GUEST_NICKNAME_CHANGED_AT_KEY);
-      if (storedChangedAt) {
-        const n = Number(storedChangedAt);
-        if (Number.isFinite(n) && n > 0) setGuestNicknameChangedAt(n);
-      }
 
       // 로그인 상태로 하이드레이션됐다면 accessToken 유효성을 서버에 1회 확인한다.
       // accessToken(쿠키)는 1시간 만료이지만 localStorage.auth_user는 만료 개념이 없어
@@ -184,13 +170,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onStorage = (e: StorageEvent) => {
       if (e.key === GUEST_NICKNAME_KEY) {
         setGuestNicknameState(e.newValue ?? '');
-      } else if (e.key === GUEST_NICKNAME_CHANGED_AT_KEY) {
-        if (e.newValue === null) {
-          setGuestNicknameChangedAt(null);
-        } else {
-          const n = Number(e.newValue);
-          setGuestNicknameChangedAt(Number.isFinite(n) && n > 0 ? n : null);
-        }
       } else if (e.key === USER_KEY) {
         if (e.newValue === null) {
           setUser(null);
@@ -207,55 +186,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const guestNicknameCooldownUntil =
-    guestNicknameChangedAt !== null
-      ? guestNicknameChangedAt + NICKNAME_CHANGE_COOLDOWN_MS
-      : 0;
-
   const setGuestNickname = useCallback(async (name: string) => {
     const trimmed = name.trim().slice(0, NICKNAME_MAX);
 
     // 저장 전 규칙 검증 (빈 값 삭제 시엔 스킵)
     if (trimmed && validateNickname(trimmed) !== null) return;
+    if (trimmed === guestNickname) return; // 동일 값 재설정은 무시
 
-    // 실제 변경이 발생하는지 판정
-    const isMeaningfulChange = trimmed !== guestNickname;
-    if (!isMeaningfulChange) return; // 동일 값 재설정은 무시
-
-    // 쿨다운 검사 — 최초 설정(changedAt null)은 스킵
-    if (guestNicknameChangedAt !== null) {
-      const nowTs = Date.now();
-      const cooldownUntil = guestNicknameChangedAt + NICKNAME_CHANGE_COOLDOWN_MS;
-      if (nowTs < cooldownUntil) {
-        const remaining = cooldownUntil - nowTs;
-        throw new Error(
-          `닉네임은 1시간에 한 번만 변경할 수 있습니다. ${formatCooldownRemaining(remaining)} 후 가능합니다.`,
-        );
-      }
-
-      // 쿨다운 통과 → 옛 guest_uuid 쿠키 삭제 후 새 신원 발급.
-      // 실패 시 throw해서 사용자에게 알림 (로컬만 바꾸면 다음 세션에서 immutability로 원복됨).
-      await deleteGuestMe();
-    }
-
-    // 값이 있으면 서버에 게스트 신원 발급 요청 (POST /api/guests).
-    // 백엔드가 guest_uuid HttpOnly 쿠키를 세팅하므로 이후 연습·라이브 모두 이 쿠키로 통과.
-    // idempotent 하므로 쿠키가 이미 있으면 기존 UUID 그대로 반환.
-    // 서버가 nickname 을 최종 값(immutability)로 회신하니 그 값으로 로컬 반영.
+    // 값이 있으면 서버에 게스트 닉네임 갱신 요청 (POST /api/guests, upsert).
+    // 신원(guest_uuid)은 그대로 유지되고 nickname만 바뀐다 — 이후 랭킹 조회도
+    // 같은 신원으로 이어진다. idempotent 하므로 쿠키가 이미 있으면 그 UUID 그대로 쓴다.
     let finalNickname = trimmed;
     if (trimmed) {
-      try {
-        const guest = await postGuest(trimmed);
-        finalNickname = guest.nickname ?? trimmed;
-      } catch (err) {
-        // 네트워크·검증 실패 시 로컬만 갱신하면 이후 라이브 세션 시작에서 GUEST_NOT_AUTHENTICATED 로 실패한다.
-        // 사용자에게 명확히 알림.
-        throw err;
-      }
+      const guest = await postGuest(trimmed);
+      finalNickname = guest.nickname ?? trimmed;
     }
 
-    // 저장
-    const now = Date.now();
     if (finalNickname) {
       setGuestNicknameState(finalNickname);
       localStorage.setItem(GUEST_NICKNAME_KEY, finalNickname);
@@ -263,9 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGuestNicknameState('');
       localStorage.removeItem(GUEST_NICKNAME_KEY);
     }
-    localStorage.setItem(GUEST_NICKNAME_CHANGED_AT_KEY, String(now));
-    setGuestNicknameChangedAt(now);
-  }, [guestNickname, guestNicknameChangedAt]);
+  }, [guestNickname]);
 
   const syncGuestNickname = useCallback((name: string) => {
     const trimmed = name?.trim() ?? '';
@@ -340,7 +284,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         guestNickname,
-        guestNicknameCooldownUntil,
         setGuestNickname,
         syncGuestNickname,
         login,

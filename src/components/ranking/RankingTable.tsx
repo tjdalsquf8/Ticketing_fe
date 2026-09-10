@@ -23,12 +23,14 @@ export default function RankingTable({
   eventId,
   myRankings = false,
   initialRows,
+  showNickname = true,
 }: {
   mode: RankingMode;
   period: RankingPeriod;
   eventId?: number;
   myRankings?: boolean;
   initialRows: RankEntry[];
+  showNickname?: boolean;
 }) {
   const [rows, setRows] = useState(initialRows);
   const [page, setPage] = useState(1);
@@ -63,10 +65,10 @@ export default function RankingTable({
 
   return (
     <>
-      <RankingRows rankings={rows} />
+      <RankingRows rankings={rows} showNickname={showNickname} />
       {hasMore && (
         <tr ref={sentinelRef}>
-          <td colSpan={3} className="px-4 py-4 text-center text-xs text-text-tertiary">
+          <td colSpan={showNickname ? 3 : 2} className="px-4 py-4 text-center text-xs text-text-tertiary">
             {loadingMore ? '불러오는 중…' : ' '}
           </td>
         </tr>

@@ -423,14 +423,16 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
               <thead>
                 <tr className="border-b border-border bg-bg-subtle">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
+                  {rankTab === 'all' && (
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
+                  )}
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {rankLoading ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                    <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
                   </tr>
                 ) : (
                   <RankingTable
@@ -440,6 +442,7 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
                     eventId={event.eventId}
                     myRankings={rankTab === 'mine'}
                     initialRows={rankings}
+                    showNickname={rankTab === 'all'}
                   />
                 )}
               </tbody>
