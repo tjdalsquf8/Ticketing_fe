@@ -6,6 +6,7 @@ import Image from 'next/image';
 import {
   getLiveCurrent,
   getLiveNext,
+  getLastRound,
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -19,6 +20,7 @@ import {
   type RankingPeriod,
 } from '@/lib/rankings';
 import RankingTable from '@/components/ranking/RankingTable';
+import RoundRankingTable from '@/components/ranking/RoundRankingTable';
 
 /* ──────────────────────────────────────────
    /live 실시간 이벤트 랜딩 — API 실연동
@@ -29,6 +31,8 @@ import RankingTable from '@/components/ranking/RankingTable';
 interface State {
   current: LiveRoundSummary | null;
   next: LiveRoundSummary | null;
+  /** 진행 중 회차가 없을 때 회차 랭킹이 가리킬 직전 종료 회차. */
+  lastRoundId: number | null;
   loaded: boolean;
 }
 
@@ -57,34 +61,46 @@ const RANK_PERIODS: { key: RankingPeriod; label: string }[] = [
   { key: 'monthly', label: '월간' },
 ];
 
+/**
+ * 랭킹 범위. 'round' 는 회차 단위(같이 뛴 사람들과의 순위), 나머지는 기간별 누적
+ * 최고기록이다. 실시간 참여자가 기대하는 건 "방금 판" 순위라 'round' 가 기본값.
+ */
+type RankScope = 'round' | RankingPeriod;
+
 export default function LiveClient() {
   const [state, setState] = useState<State>({
     current: null,
     next: null,
+    lastRoundId: null,
     loaded: false,
   });
   const [error, setError] = useState<string | null>(null);
   const { nowServer } = useServerTime();
   const [, setTick] = useState(0);
 
-  // 실시간 랭킹 섹션 — 전체/내기록 탭 + 기간 필터
+  // 실시간 랭킹 섹션 — 회차/기간 범위 + (누적일 때만) 전체/내기록 탭
   const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
-  const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
+  const [rankScope, setRankScope] = useState<RankScope>('round');
   const [rankings, setRankings] = useState<(RankEntry | MyRankEntry)[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
 
   const loadRankings = useCallback(async () => {
+    // 회차 랭킹은 RoundRankingTable 이 자체적으로 불러온다.
+    if (rankScope === 'round') {
+      setRankLoading(false);
+      return;
+    }
     setRankLoading(true);
     const fetcher = rankTab === 'mine' ? getMyRankings : getRankings;
     try {
-      const rows = await fetcher({ mode: 'live', period: rankPeriod });
+      const rows = await fetcher({ mode: 'live', period: rankScope });
       setRankings(rows);
     } catch {
       setRankings([]);
     } finally {
       setRankLoading(false);
     }
-  }, [rankTab, rankPeriod]);
+  }, [rankTab, rankScope]);
 
   useEffect(() => {
     void loadRankings();
@@ -94,13 +110,15 @@ export default function LiveClient() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [c, n] = await Promise.allSettled([
+      const [c, n, l] = await Promise.allSettled([
         getLiveCurrent(),
         getLiveNext(),
+        // 회차 랭킹 기본 탭이 가리킬 회차. 진행 중 회차가 없으면 직전 종료 회차로 넘어간다.
+        getLastRound(1),
       ]);
       if (!alive) return;
       // 어느 하나라도 rejected 여도 나머지는 렌더. 에러 메시지는 최소한만.
-      const firstError = [c, n].find((r) => r.status === 'rejected') as
+      const firstError = [c, n, l].find((r) => r.status === 'rejected') as
         | PromiseRejectedResult
         | undefined;
       if (firstError && firstError.reason instanceof ApiError) {
@@ -109,6 +127,8 @@ export default function LiveClient() {
       setState({
         current: c.status === 'fulfilled' ? c.value : null,
         next: n.status === 'fulfilled' ? n.value : null,
+        lastRoundId:
+          l.status === 'fulfilled' ? (l.value?.round.roundId ?? null) : null,
         loaded: true,
       });
     })();
@@ -124,6 +144,15 @@ export default function LiveClient() {
   }, []);
 
   const activeRound: LiveRoundSummary | null = state.current ?? state.next;
+  // 회차 랭킹 대상: 진행 중 회차 우선, 없으면 직전 종료 회차.
+  const rankRoundId: number | null = state.current?.roundId ?? state.lastRoundId;
+  const scopeTabs: { key: RankScope; label: string }[] = [
+    { key: 'round', label: state.current ? '이번 회차' : '지난 회차' },
+    ...RANK_PERIODS,
+  ];
+  const showNicknameCol = rankScope === 'round' || rankTab === 'all';
+  // "내 기록"은 시도 한 건이 한 행이라 날짜 열을 붙인다. 회차 랭킹에는 해당 없음.
+  const showDateCol = rankScope !== 'round' && rankTab === 'mine';
   const activeEvent: LiveEvent | null = activeRound
     ? getLiveEventByVenueSlug(activeRound.venueId)
     : null;
@@ -163,35 +192,41 @@ export default function LiveClient() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-text">실시간 랭킹</h2>
-            <p className="text-sm text-text-secondary mt-1">소요 시간이 빠른 순으로 정렬됩니다.</p>
+            <p className="text-sm text-text-secondary mt-1">
+              {rankScope === 'round'
+                ? '같은 회차에 참여한 사람들끼리의 순위입니다.'
+                : '기간 내 최고 기록 기준입니다.'}
+            </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
+            {rankScope !== 'round' && (
+              <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
+                {RANK_TABS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setRankTab(key)}
+                    className={[
+                      'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
+                      key === rankTab
+                        ? 'bg-bg-surface text-text shadow-xs border border-border'
+                        : 'text-text-secondary hover:text-text',
+                    ].join(' ')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
-              {RANK_TABS.map(({ key, label }) => (
+              {scopeTabs.map(({ key, label }) => (
                 <button
                   key={key}
                   type="button"
-                  onClick={() => setRankTab(key)}
+                  onClick={() => setRankScope(key)}
                   className={[
                     'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
-                    key === rankTab
-                      ? 'bg-bg-surface text-text shadow-xs border border-border'
-                      : 'text-text-secondary hover:text-text',
-                  ].join(' ')}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="inline-flex flex-wrap rounded-lg border border-border bg-bg-subtle p-1 gap-0.5">
-              {RANK_PERIODS.map(({ key, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setRankPeriod(key)}
-                  className={[
-                    'shrink-0 whitespace-nowrap px-4 py-1.5 rounded-md text-sm font-medium transition-colors',
-                    key === rankPeriod
+                    key === rankScope
                       ? 'bg-bg-surface text-text shadow-xs border border-border'
                       : 'text-text-secondary hover:text-text',
                   ].join(' ')}
@@ -207,23 +242,38 @@ export default function LiveClient() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
+                {showDateCol && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">날짜</th>
+                )}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                {rankTab === 'all' && (
+                {showNicknameCol && (
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
                 )}
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+                {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
+                    닉네임 열이 없는 "내 기록"에서는 소요 시간이 그 역할을 맡는다. */}
+                <th className={`text-right px-4 py-3 text-xs font-semibold text-text-secondary${showDateCol ? ' w-full' : ''}`}>소요 시간</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rankLoading ? (
+              {rankScope === 'round' ? (
+                rankRoundId !== null ? (
+                  <RoundRankingTable key={rankRoundId} roundId={rankRoundId} />
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">
+                      {state.loaded ? '아직 진행된 회차가 없습니다.' : '불러오는 중…'}
+                    </td>
+                  </tr>
+                )
+              ) : rankLoading ? (
                 <tr>
-                  <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
                 </tr>
               ) : (
                 <RankingTable
-                  key={`${rankTab}-${rankPeriod}`}
+                  key={`${rankTab}-${rankScope}`}
                   mode="live"
-                  period={rankPeriod}
+                  period={rankScope}
                   myRankings={rankTab === 'mine'}
                   initialRows={rankings}
                   showNickname={rankTab === 'all'}
@@ -242,6 +292,11 @@ export default function LiveClient() {
           <li>
             성공한 사람은 소요 시간 기준으로{' '}
             <strong className="text-text">실시간 랭킹</strong>에 바로 반영됩니다.
+          </li>
+          <li>
+            소요 시간은{' '}
+            <strong className="text-text">예매하기를 누른 순간부터 예매 완료까지</strong>를
+            측정합니다 (대기열에서 기다린 시간도 포함).
           </li>
           <li>
             게스트도 참여 가능하지만 리더보드 등재는{' '}

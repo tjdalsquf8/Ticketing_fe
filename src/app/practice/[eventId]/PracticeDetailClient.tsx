@@ -101,7 +101,7 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
 
   // 연습 랭킹 섹션 — 전체/내기록 탭 + 기간 필터 (선택된 이벤트로 스코프)
   const [rankTab, setRankTab] = useState<'all' | 'mine'>('all');
-  const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('daily');
+  const [rankPeriod, setRankPeriod] = useState<RankingPeriod>('monthly');
   const [rankings, setRankings] = useState<(RankEntry | MyRankEntry)[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
 
@@ -418,17 +418,22 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-bg-subtle">
+                {rankTab === 'mine' && (
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">날짜</th>
+                )}
                 <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
                 {rankTab === 'all' && (
                   <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
                 )}
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
+                {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
+                    전체 랭킹은 닉네임이, "내 기록"은 닉네임이 없으니 소요 시간이 맡는다. */}
+                <th className={`text-right px-4 py-3 text-xs font-semibold text-text-secondary${rankTab === 'mine' ? ' w-full' : ''}`}>소요 시간</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rankLoading ? (
                 <tr>
-                  <td colSpan={rankTab === 'all' ? 3 : 2} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
                 </tr>
               ) : (
                 <RankingTable

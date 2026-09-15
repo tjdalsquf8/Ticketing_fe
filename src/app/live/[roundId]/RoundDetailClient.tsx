@@ -21,6 +21,7 @@ import type { VenueConfig } from '@/types/ticketing';
 import BookingFlow from '@/components/booking/BookingFlow';
 import type { LiveConfirmResult } from '@/lib/live';
 import LiveResultCard from '@/components/live/LiveResultCard';
+import { RoundRankingSection } from '@/components/ranking/RoundRankingTable';
 import TicketingDetailLayout, {
   type TicketingSession,
 } from '@/components/booking/TicketingDetailLayout';
@@ -734,6 +735,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
               '회차 오픈 시각에 맞춰 대기실이 자동 개방됩니다.',
               '진행 중 새로고침 시 대기순서가 초기화됩니다.',
               '성공한 사람은 소요 시간 기준으로 실시간 랭킹에 반영됩니다.',
+              '소요 시간은 예매하기를 누른 순간부터 예매 완료까지를 측정합니다(대기열에서 기다린 시간도 포함).',
               '게스트는 참여 가능하지만 리더보드 등재는 회원 전용입니다.',
             ]}
           />
@@ -765,6 +767,19 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {(round.status === 'open' || round.status === 'closed') && (
+            <div className="px-4 sm:px-6 pb-10">
+              <RoundRankingSection
+                roundId={round.roundId}
+                description={
+                  round.status === 'open'
+                    ? '진행 중인 회차라 완주자가 늘어날 때마다 순위가 바뀝니다.'
+                    : '같은 회차에 참여한 사람들끼리의 최종 순위입니다.'
+                }
+              />
             </div>
           )}
         </>
