@@ -50,6 +50,8 @@ export const ROUTES = {
     round: (roundId: number | string) => `${BASE_URL}/live/rounds/${roundId}`,
     roundSessions: (roundId: number | string) =>
       `${BASE_URL}/live/rounds/${roundId}/sessions`,
+    roundRankings: (roundId: number | string) =>
+      `${BASE_URL}/live/rounds/${roundId}/rankings`,
     session: (sessionId: string) => ({
       queue: `${BASE_URL}/live/sessions/${sessionId}/queue`,
       seats: `${BASE_URL}/live/sessions/${sessionId}/seats`,
@@ -291,6 +293,19 @@ export async function apiFetchWithMeta<T, M = Record<string, unknown>>(
 ): Promise<{ data: T; meta: M | undefined }> {
   const json = await fetchEnvelope<T, M>(url, options);
   return { data: json.data, meta: json.meta };
+}
+
+/**
+ * 봉투 전체를 그대로 반환. `data`/`meta` 외에 추가 최상위 키를 내려주는 엔드포인트용
+ * (회차 랭킹의 `me` — 페이지 밖이어도 항상 채워지는 내 순위).
+ * 일반 호출은 apiFetch / apiFetchWithMeta 를 쓸 것.
+ */
+export async function apiFetchEnvelope<T, M = Record<string, unknown>>(
+  url: string,
+  options: FetchOptions = {},
+): Promise<SuccessEnvelope<T, M> & Record<string, unknown>> {
+  return (await fetchEnvelope<T, M>(url, options)) as SuccessEnvelope<T, M> &
+    Record<string, unknown>;
 }
 
 // getErrorMessage와 동일한 내부 맵을 공유할 수 없어(export 안 됨) 별도 검사 함수.

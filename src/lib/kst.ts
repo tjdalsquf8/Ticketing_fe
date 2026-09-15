@@ -55,6 +55,16 @@ export function formatKstDateTime(iso: string | Date): string {
   return `${y}.${m}.${d} (${dow}) ${hh}:${mm}`;
 }
 
+/** 기록 목록용 짧은 KST 표기. e.g. "09.15 18:04" — 같은 날 여러 시도를 구분하려고 시각까지 붙인다. */
+export function formatKstShort(iso: string | Date): string {
+  const k = toKstShifted(iso);
+  const m = String(k.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(k.getUTCDate()).padStart(2, '0');
+  const hh = String(k.getUTCHours()).padStart(2, '0');
+  const mm = String(k.getUTCMinutes()).padStart(2, '0');
+  return `${m}.${d} ${hh}:${mm}`;
+}
+
 /** "YYYY-MM" → 해당 달 첫날 KST 00:00 의 UTC ms 정보 (달력 그리기용) */
 export function getMonthMeta(ym: string): {
   year: number;

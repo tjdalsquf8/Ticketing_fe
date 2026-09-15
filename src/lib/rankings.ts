@@ -21,11 +21,16 @@ export interface RankEntry {
   is_verified: boolean;
 }
 
-/** 내 기록 한 행. 전부 본인 기록이므로 nickname 을 내려주지 않는다. */
+/**
+ * 내 기록 한 행. 전부 본인 기록이므로 nickname 을 내려주지 않는다.
+ * 집계가 아니라 시도 한 건이 한 행이라 `started_at`(시도 시각)이 같이 온다 —
+ * 리더보드(getRankings)는 identity 별 집계라 이 필드가 없다.
+ */
 export interface MyRankEntry {
   rank: number;
   best_ms: number;
   is_verified: boolean;
+  started_at: string | null;
 }
 
 function toFiniteNumber(v: unknown): number | null {
@@ -45,7 +50,12 @@ function normalizeMyRankEntry(v: unknown): MyRankEntry | null {
   if (rank === null || best_ms === null || typeof e.is_verified !== "boolean") {
     return null;
   }
-  return { rank, best_ms, is_verified: e.is_verified };
+  return {
+    rank,
+    best_ms,
+    is_verified: e.is_verified,
+    started_at: typeof e.started_at === "string" ? e.started_at : null,
+  };
 }
 
 function normalizeRankEntry(v: unknown): RankEntry | null {

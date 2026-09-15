@@ -5,7 +5,8 @@ import Link from 'next/link';
 /* ─────────────────────────────────────────────
    LiveResultCard — 실시간 예매 확정 직후 뜨는 성공 팝업
    ─ 회차가 아직 진행 중일 수 있으므로 등수는 보여주지 않고,
-     예매 성공 여부 + 소요 시간만 알려준 뒤 랭킹 페이지로 유도한다.
+     예매 성공 여부 + 이번 판 소요 시간만 알려준 뒤 랭킹 페이지로 유도한다.
+     (/live 랭킹 기본 탭이 "이번 회차"라 같은 회차 순위로 바로 이어진다.)
    ───────────────────────────────────────────── */
 
 interface Props {
@@ -29,8 +30,11 @@ export default function LiveResultCard({ elapsedMs, onLeave }: Props) {
       >
         <p className="text-xl font-bold text-text">예매 성공!</p>
         <p className="text-sm text-text-secondary">
-          소요 시간{' '}
+          이번 판 소요 시간{' '}
           <span className="text-2xl font-bold text-primary font-mono-tabular">{timeStr}s</span>
+        </p>
+        <p className="text-xs text-text-tertiary">
+          예매하기를 누른 순간부터 예매 완료까지 (대기열 대기 시간 포함)
         </p>
         <Link
           href="/live"
