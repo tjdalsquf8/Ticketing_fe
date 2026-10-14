@@ -14,6 +14,7 @@ import {
 } from '@/lib/events';
 import { ApiError } from '@/lib/errors';
 import LatestEventMyRow from './LatestEventMyRow';
+import { RANK_HEAD_CELL, RANK_SCROLL_HEIGHT } from './rankingShell';
 
 /* ──────────────────────────────────────────
    LatestEventBoard — /ranking?board=latest-event
@@ -141,29 +142,32 @@ export default function LatestEventBoard() {
         <>
           <LatestEventMyRow rankings={rankings} />
           <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-bg-subtle">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">
-                    순위
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">
-                    닉네임
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">
-                    좌석
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">
-                    소요 시간
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {rankings.map((row, i) => (
-                  <RankingRow key={`${row.rank}-${i}`} row={row} />
-                ))}
-              </tbody>
-            </table>
+            {/* 목록만 고정 높이로 스크롤 — 헤더는 상단 고정 */}
+            <div className={`${RANK_SCROLL_HEIGHT} overflow-y-auto`}>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-bg-subtle">
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap`}>
+                      순위
+                    </th>
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary`}>
+                      닉네임
+                    </th>
+                    <th className={`${RANK_HEAD_CELL} text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap`}>
+                      좌석
+                    </th>
+                    <th className={`${RANK_HEAD_CELL} text-right px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap`}>
+                      소요 시간
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {rankings.map((row, i) => (
+                    <RankingRow key={`${row.rank}-${i}`} row={row} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
           <p className="text-[11px] text-text-tertiary text-right">
             10초마다 자동 갱신 · 탭이 보이는 동안에만 폴링합니다.

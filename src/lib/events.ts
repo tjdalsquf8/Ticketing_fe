@@ -243,20 +243,20 @@ export function startEventSession(eventId: number | string) {
 
 const SESSIONS_BASE = `${EVENTS_BASE}/sessions`;
 
-export function getEventSessionQueue(sessionId: string) {
-  return apiFetch<{
-    sessionId: string;
-    status: "active" | "queued" | "completed";
-    queuePosition: number | null;
-    ready: boolean;
-  }>(`${SESSIONS_BASE}/${sessionId}/queue`);
+/**
+ * 대기열 순번 SSE URL. `snapshot` / `queue_update` 이벤트로 순번이 push 된다.
+ * (폴링 엔드포인트 GET /events/sessions/:id/queue 는 삭제됨.)
+ */
+export function eventQueueStreamUrl(eventId: number | string, sessionId: string) {
+  return `${EVENTS_BASE}/${eventId}/queue/stream?sessionId=${encodeURIComponent(sessionId)}`;
 }
 
-export function getEventSessionSeats(sessionId: string) {
-  return apiFetch<{
-    seats: Array<{ seatLabel: string; status: "available" | "held" | "sold" }>;
-    myHold: { seatLabel: string; expiresAt: string } | null;
-  }>(`${SESSIONS_BASE}/${sessionId}/seats`);
+/**
+ * 좌석맵 SSE URL. `snapshot`(전체) 1회 + `seat_update`(변경분) push.
+ * (폴링 엔드포인트 GET /events/sessions/:id/seats 는 삭제됨.)
+ */
+export function eventSeatsStreamUrl(eventId: number | string, sessionId: string) {
+  return `${EVENTS_BASE}/${eventId}/seats/stream?sessionId=${encodeURIComponent(sessionId)}`;
 }
 
 export function holdEventSeat(sessionId: string, seatLabel: string) {

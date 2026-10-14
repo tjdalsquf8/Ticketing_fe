@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
   getLiveCurrent,
   getLiveNext,
+  isRoundLive,
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -28,18 +29,32 @@ export default function HomeLiveHero() {
   const { nowServer } = useServerTime();
   const [, setTick] = useState(0);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const [c, n] = await Promise.allSettled([getLiveCurrent(), getLiveNext()]);
-      if (!alive) return;
-      setCurrent(c.status === 'fulfilled' ? c.value : null);
-      setNext(n.status === 'fulfilled' ? n.value : null);
-    })();
-    return () => {
-      alive = false;
-    };
+  const load = useCallback(async () => {
+    const [c, n] = await Promise.allSettled([getLiveCurrent(), getLiveNext()]);
+    setCurrent(c.status === 'fulfilled' ? c.value : null);
+    setNext(n.status === 'fulfilled' ? n.value : null);
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, [load]);
+
+  // 진행 중 회차가 끝나는 시각에 맞춰 재조회. 홈을 띄워둔 채 회차가 끝나도
+  // 다음 회차로 자동 교체된다 (마운트 때 1회만 조회하면 LIVE 배지가 남는다).
+  useEffect(() => {
+    if (!current) return;
+    const closesAtMs = Date.parse(current.closesAt);
+    if (!Number.isFinite(closesAtMs)) return;
+    // 이미 지난 회차면 재조회하지 않는다 — 백엔드가 아직 안 닫은 상태면
+    // 응답이 그대로라 재조회 → 상태 변경 → 재조회 루프가 된다. 표시는 아래
+    // isRoundLive 가드가 막아주므로 다음 회차로 넘어간 화면이 유지된다.
+    const delay = closesAtMs - nowServer() + 1_000;
+    if (delay <= 0) return;
+    const id = setTimeout(() => void load(), delay);
+    return () => clearTimeout(id);
+  }, [current, load, nowServer]);
 
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 500);
@@ -49,11 +64,12 @@ export default function HomeLiveHero() {
   const loaded = current !== undefined && next !== undefined;
   if (!loaded) return <SkeletonHero />;
 
-  const round = current ?? next;
+  // 백엔드가 아직 안 닫은 회차(status='open' 인데 closesAt 경과)는 진행 중으로 치지 않는다.
+  const isOpen = isRoundLive(current, nowServer());
+  const round = isOpen ? current : next;
   if (!round) return <EmptyHero />;
 
   const event: LiveEvent | null = getLiveEventByVenueSlug(round.venueId);
-  const isOpen = current?.roundId === round.roundId;
   const opensAtMs = Date.parse(round.opensAt);
   const remainingMs = Math.max(0, opensAtMs - nowServer());
   const totalSec = Math.floor(remainingMs / 1000);

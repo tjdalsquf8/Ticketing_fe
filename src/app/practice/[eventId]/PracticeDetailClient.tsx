@@ -18,6 +18,7 @@ import {
   type RankingPeriod,
 } from '@/lib/rankings';
 import RankingTable from '@/components/ranking/RankingTable';
+import { RANK_HEAD_CELL, RANK_SCROLL_HEIGHT } from '@/components/ranking/rankingShell';
 
 /**
  * 해당 tier에 속한 "실제 선택 가능한 좌석 수"를 계산.
@@ -415,39 +416,42 @@ export default function PracticeDetailClient({ event }: { event: PracticeEvent }
         </div>
 
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-bg-subtle">
-                {rankTab === 'mine' && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">날짜</th>
-                )}
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                {rankTab === 'all' && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-                )}
-                {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
-                    전체 랭킹은 닉네임이, "내 기록"은 닉네임이 없으니 소요 시간이 맡는다. */}
-                <th className={`text-right px-4 py-3 text-xs font-semibold text-text-secondary${rankTab === 'mine' ? ' w-full' : ''}`}>소요 시간</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rankLoading ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+          {/* 목록만 고정 높이로 스크롤 — 헤더/내 순위 행은 위아래 고정 */}
+          <div className={`${RANK_SCROLL_HEIGHT} overflow-y-auto`}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-bg-subtle">
+                  {rankTab === 'mine' && (
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap`}>날짜</th>
+                  )}
+                  <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap`}>순위</th>
+                  {rankTab === 'all' && (
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary`}>닉네임</th>
+                  )}
+                  {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
+                      전체 랭킹은 닉네임이, "내 기록"은 닉네임이 없으니 소요 시간이 맡는다. */}
+                  <th className={`${RANK_HEAD_CELL} text-right px-4 py-3 text-xs font-semibold text-text-secondary${rankTab === 'mine' ? ' w-full' : ''}`}>소요 시간</th>
                 </tr>
-              ) : (
-                <RankingTable
-                  key={`${rankTab}-${rankPeriod}`}
-                  mode="practice"
-                  period={rankPeriod}
-                  eventId={event.eventId}
-                  myRankings={rankTab === 'mine'}
-                  initialRows={rankings}
-                  showNickname={rankTab === 'all'}
-                />
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rankLoading ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  </tr>
+                ) : (
+                  <RankingTable
+                    key={`${rankTab}-${rankPeriod}`}
+                    mode="practice"
+                    period={rankPeriod}
+                    eventId={event.eventId}
+                    myRankings={rankTab === 'mine'}
+                    initialRows={rankings}
+                    showNickname={rankTab === 'all'}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

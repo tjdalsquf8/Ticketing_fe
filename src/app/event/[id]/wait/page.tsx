@@ -4,18 +4,19 @@ import { useCallback, useEffect, useMemo, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
+  eventQueueStreamUrl,
   getEvent,
-  getEventSessionQueue,
   startEventSession,
   type EventDetail,
   type EventSession,
 } from '@/lib/events';
-import { ApiError, isEventRateLimitCode } from '@/lib/errors';
+import { useQueueStream } from '@/hooks/useQueueStream';
+import { ApiError } from '@/lib/errors';
 
 /* ──────────────────────────────────────────
    /event/[id]/wait — 대기실 (실 API 연동)
    ─ 오픈 전: opensAt 카운트다운
-   ─ 오픈 도래 시: startEventSession 호출 → active면 book, queued면 큐 폴링
+   ─ 오픈 도래 시: startEventSession 호출 → active면 book, queued면 큐 SSE 구독
    ─ 종료 시: result 리다이렉트
    ────────────────────────────────────────── */
 
@@ -102,41 +103,23 @@ export default function WaitPage({
       });
   }, [event, phase, nowMs, opensAtMs, id, router]);
 
-  // queued 상태 폴링
+  // queued 상태 — 대기열 SSE 구독 (폴링 엔드포인트는 BE 에서 삭제됨)
+  const queueStreamUrl =
+    phase === 'queued' && session && event
+      ? eventQueueStreamUrl(event.eventId, session.sessionId)
+      : null;
+  const { state: queueState, error: queueError } = useQueueStream(queueStreamUrl);
+
+  // 승격되면 좌석 선택 화면으로. (순번/에러는 별도 state 로 복사하지 않고 렌더에서 바로 읽는다.)
   useEffect(() => {
-    if (phase !== 'queued' || !session) return;
-    let alive = true;
-    let stopped = false;
-    const tick = async () => {
-      if (stopped) return;
-      // 백그라운드 탭은 rate limit 예산 소진 방지 위해 skip.
-      if (typeof document !== 'undefined' && document.hidden) return;
-      try {
-        const q = await getEventSessionQueue(session.sessionId);
-        if (!alive) return;
-        setQueuePosition(q.queuePosition);
-        if (q.ready) {
-          router.replace(`/event/${id}/book?sid=${encodeURIComponent(session.sessionId)}&started=${encodeURIComponent(session.startedAt)}`);
-        }
-      } catch (e: unknown) {
-        if (e instanceof ApiError) {
-          // 429: 폴링 중단 후 사용자 유도. 자동 재시도 하지 않음 (BE 스펙).
-          if (isEventRateLimitCode(e.code)) {
-            stopped = true;
-            setError(e.message);
-            return;
-          }
-          setError(e.message);
-        }
-      }
-    };
-    const iv = setInterval(tick, 1000);
-    tick();
-    return () => {
-      alive = false;
-      clearInterval(iv);
-    };
-  }, [phase, session, id, router]);
+    if (!queueState?.ready || !session) return;
+    router.replace(
+      `/event/${id}/book?sid=${encodeURIComponent(session.sessionId)}&started=${encodeURIComponent(session.startedAt)}`,
+    );
+  }, [queueState, session, id, router]);
+
+  const shownPosition = queueState?.queuePosition ?? queuePosition;
+  const shownError = error ?? queueError?.message ?? null;
 
   const cdParts = useMemo(() => {
     if (remainMs <= 0) return { hh: '00', mm: '00', ss: '00' };
@@ -148,13 +131,13 @@ export default function WaitPage({
     };
   }, [remainMs]);
 
-  if (phase === 'error') {
+  if (phase === 'error' || queueError) {
     return (
       <div className="min-h-[calc(100vh-56px)] bg-bg-subtle flex items-center justify-center px-4 py-10">
         <div className="max-w-md w-full card p-8 text-center space-y-4">
           <h1 className="text-xl font-bold text-text">진입할 수 없어요</h1>
           <p className="text-sm text-text-secondary">
-            {error ?? '알 수 없는 오류가 발생했습니다.'}
+            {shownError ?? '알 수 없는 오류가 발생했습니다.'}
           </p>
           <Link href={`/event/${id}`} className="btn btn-solid inline-flex">
             이벤트 상세로
@@ -186,7 +169,7 @@ export default function WaitPage({
             <div className="text-center space-y-4">
               <p className="text-xs text-text-secondary">대기열 진입</p>
               <p className="text-5xl font-bold text-primary font-mono-tabular">
-                {queuePosition ?? '—'}
+                {shownPosition ?? '—'}
                 <span className="text-lg text-text-secondary ml-1">번째</span>
               </p>
               <p className="text-xs text-text-tertiary">

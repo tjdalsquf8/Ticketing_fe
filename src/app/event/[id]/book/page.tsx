@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   confirmEventSeat,
+  eventSeatsStreamUrl,
   getEvent,
-  getEventSessionSeats,
   holdEventSeat,
   startEventSession,
   type EventDetail,
@@ -26,7 +26,6 @@ import { ApiError } from '@/lib/errors';
    ────────────────────────────────────────── */
 
 const EVENT_API = {
-  getSeats: getEventSessionSeats,
   holdSeat: holdEventSeat,
   confirmSeat: confirmEventSeat,
 };
@@ -195,6 +194,7 @@ export default function EventBookPage({
         liveMode={{
           sessionId,
           roundId: event.eventId,
+          seatsStreamUrl: eventSeatsStreamUrl(event.eventId, sessionId),
           onConfirmed: handleConfirmed,
           api: EVENT_API,
         }}

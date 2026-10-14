@@ -7,6 +7,7 @@ import {
   getLiveCurrent,
   getLiveNext,
   getLastRound,
+  isRoundLive,
   type LiveRoundSummary,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
@@ -21,6 +22,7 @@ import {
 } from '@/lib/rankings';
 import RankingTable from '@/components/ranking/RankingTable';
 import RoundRankingTable from '@/components/ranking/RoundRankingTable';
+import { RANK_HEAD_CELL, RANK_SCROLL_HEIGHT } from '@/components/ranking/rankingShell';
 
 /* ──────────────────────────────────────────
    /live 실시간 이벤트 랜딩 — API 실연동
@@ -143,11 +145,15 @@ export default function LiveClient() {
     return () => clearInterval(id);
   }, []);
 
-  const activeRound: LiveRoundSummary | null = state.current ?? state.next;
+  // closesAt 이 지난 회차는 백엔드 status 가 아직 'open' 이어도 진행 중으로 치지 않는다.
+  const liveRound: LiveRoundSummary | null = isRoundLive(state.current, nowServer())
+    ? state.current
+    : null;
+  const activeRound: LiveRoundSummary | null = liveRound ?? state.next;
   // 회차 랭킹 대상: 진행 중 회차 우선, 없으면 직전 종료 회차.
-  const rankRoundId: number | null = state.current?.roundId ?? state.lastRoundId;
+  const rankRoundId: number | null = liveRound?.roundId ?? state.lastRoundId;
   const scopeTabs: { key: RankScope; label: string }[] = [
-    { key: 'round', label: state.current ? '이번 회차' : '지난 회차' },
+    { key: 'round', label: liveRound ? '이번 회차' : '지난 회차' },
     ...RANK_PERIODS,
   ];
   const showNicknameCol = rankScope === 'round' || rankTab === 'all';
@@ -180,7 +186,7 @@ export default function LiveClient() {
         <HeroCard
           round={activeRound}
           event={activeEvent}
-          isOpen={state.current?.roundId === activeRound.roundId}
+          isOpen={liveRound?.roundId === activeRound.roundId}
           nowServer={nowServer}
         />
       ) : (
@@ -239,48 +245,52 @@ export default function LiveClient() {
         </div>
 
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-bg-subtle">
-                {showDateCol && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap">날짜</th>
-                )}
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-                {showNicknameCol && (
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-                )}
-                {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
-                    닉네임 열이 없는 "내 기록"에서는 소요 시간이 그 역할을 맡는다. */}
-                <th className={`text-right px-4 py-3 text-xs font-semibold text-text-secondary${showDateCol ? ' w-full' : ''}`}>소요 시간</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rankScope === 'round' ? (
-                rankRoundId !== null ? (
-                  <RoundRankingTable key={rankRoundId} roundId={rankRoundId} />
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">
-                      {state.loaded ? '아직 진행된 회차가 없습니다.' : '불러오는 중…'}
-                    </td>
-                  </tr>
-                )
-              ) : rankLoading ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+          {/* 참여자가 많아도 페이지 전체가 늘어나지 않도록 랭킹만 별도 스크롤.
+              헤더와 "내 순위" 행은 이 영역 위·아래에 고정된다. */}
+          <div className={`${RANK_SCROLL_HEIGHT} overflow-y-auto`}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-bg-subtle">
+                  {showDateCol && (
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary whitespace-nowrap`}>날짜</th>
+                  )}
+                  <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap`}>순위</th>
+                  {showNicknameCol && (
+                    <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary`}>닉네임</th>
+                  )}
+                  {/* 남는 폭을 흡수하는 열이 하나는 있어야 나머지 열이 왼쪽에 붙는다.
+                      닉네임 열이 없는 "내 기록"에서는 소요 시간이 그 역할을 맡는다. */}
+                  <th className={`${RANK_HEAD_CELL} text-right px-4 py-3 text-xs font-semibold text-text-secondary${showDateCol ? ' w-full' : ''}`}>소요 시간</th>
                 </tr>
-              ) : (
-                <RankingTable
-                  key={`${rankTab}-${rankScope}`}
-                  mode="live"
-                  period={rankScope}
-                  myRankings={rankTab === 'mine'}
-                  initialRows={rankings}
-                  showNickname={rankTab === 'all'}
-                />
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {rankScope === 'round' ? (
+                  rankRoundId !== null ? (
+                    <RoundRankingTable key={rankRoundId} roundId={rankRoundId} />
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">
+                        {state.loaded ? '아직 진행된 회차가 없습니다.' : '불러오는 중…'}
+                      </td>
+                    </tr>
+                  )
+                ) : rankLoading ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-sm text-text-tertiary">불러오는 중…</td>
+                  </tr>
+                ) : (
+                  <RankingTable
+                    key={`${rankTab}-${rankScope}`}
+                    mode="live"
+                    period={rankScope}
+                    myRankings={rankTab === 'mine'}
+                    initialRows={rankings}
+                    showNickname={rankTab === 'all'}
+                  />
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 

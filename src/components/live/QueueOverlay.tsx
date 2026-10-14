@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { LiveQueueState } from '@/lib/live';
 import { ApiError } from '@/lib/errors';
 
 /* ─────────────────────────────────────────────────────────
    QueueOverlay — 라이브 세션 대기열 오버레이
    ─ POST /sessions 응답을 initialState 로 받아 즉시 표시
-   ─ 이후 useLiveQueue 훅이 1초 폴링으로 갱신
+   ─ 이후 useQueueStream 훅이 SSE push 로 갱신
    ─ ready === true 로 승격되면 호출부가 언마운트
    ───────────────────────────────────────────────────────── */
 
@@ -47,7 +47,31 @@ export default function QueueOverlay({
   const isReady =
     !isError &&
     (queueState?.ready === true || queueState?.status === 'active');
+  // 회차 종료·TTL 만료 등으로 서버가 세션을 failed 처리한 경우.
+  // ApiError 는 아니라서(요청 자체는 200) isError 로는 안 잡힌다 — 별도 처리 필요.
+  const isFailed = !isError && !isReady && queueState?.status === 'failed';
   const queuePosition = queueState?.queuePosition ?? null;
+
+  // 진행률: 최초로 확인된 순번(initialPosition) 대비 현재 순번이 얼마나 줄었는지로 계산.
+  // 세션이 바뀌면(sessionId 변경) 기준값을 리셋한다.
+  const [initialPosition, setInitialPosition] = useState<number | null>(null);
+  const lastSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastSessionIdRef.current !== sessionId) {
+      lastSessionIdRef.current = sessionId;
+      setInitialPosition(null);
+    }
+  }, [sessionId]);
+  useEffect(() => {
+    if (queuePosition !== null && initialPosition === null) {
+      setInitialPosition(queuePosition);
+    }
+  }, [queuePosition, initialPosition]);
+
+  const waitingProgress =
+    initialPosition !== null && initialPosition > 0 && queuePosition !== null
+      ? Math.min(100, Math.max(0, (1 - queuePosition / initialPosition) * 100))
+      : 0;
 
   return (
     <div
@@ -96,7 +120,20 @@ export default function QueueOverlay({
           </div>
         )}
 
-        {!isError && !isReady && (
+        {isFailed && (
+          <div className="space-y-3 py-4">
+            <p className="text-sm font-semibold text-danger-text">
+              대기열에서 제외됐어요.
+            </p>
+            <p className="text-xs text-text-secondary">
+              회차가 종료됐거나 오래 반응이 없어 자동으로 나가졌어요.
+              <br />
+              다시 시도해 주세요.
+            </p>
+          </div>
+        )}
+
+        {!isError && !isFailed && !isReady && (
           <div className="space-y-3 py-4">
             <p className="text-xs font-semibold text-text-tertiary tracking-widest uppercase">
               내 순번
@@ -109,6 +146,14 @@ export default function QueueOverlay({
                 </span>
               )}
             </p>
+            {/* 프로그레스바: 최초 순번 대비 현재 순번 감소율 */}
+            <div className="relative h-2.5 rounded-full bg-bg-subtle overflow-hidden">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-primary transition-[width] duration-500 ease-out"
+                style={{ width: `${waitingProgress}%` }}
+              />
+            </div>
+
             <p className="text-sm text-text-secondary pt-2">
               잠시만 기다려 주세요.
               <br />

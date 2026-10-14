@@ -7,7 +7,7 @@ import { apiFetch, ROUTES } from "./api";
    ───────────────────────────────────────────── */
 
 export type RankingMode = "practice" | "live";
-export type RankingPeriod = "daily" | "weekly" | "monthly";
+export type RankingPeriod = "daily" | "weekly" | "monthly" | "all";
 
 /**
  * 리더보드 한 행. `nickname` 은 **최고기록을 낸 시점의 스냅샷**이지 현재 닉네임이
