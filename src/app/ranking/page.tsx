@@ -4,6 +4,7 @@ import { ROUTES } from '@/lib/api';
 import { PRACTICE_EVENTS } from '@/data/practice';
 import RankingTable from '@/components/ranking/RankingTable';
 import LatestEventBoard from '@/components/ranking/LatestEventBoard';
+import { RANK_HEAD_CELL, RANK_SCROLL_HEIGHT } from '@/components/ranking/rankingShell';
 
 export const metadata: Metadata = { title: '랭킹' };
 
@@ -240,24 +241,27 @@ async function TimeBoard({
 
       {/* 테이블 */}
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-bg-subtle">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap">순위</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold text-text-secondary">닉네임</th>
-              <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary">소요 시간</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            <RankingTable
-              key={`${mode}-${period}-${eventId ?? 'all'}`}
-              mode={mode}
-              period={period}
-              eventId={eventId}
-              initialRows={rankings}
-            />
-          </tbody>
-        </table>
+        {/* 목록만 고정 높이로 스크롤 — 헤더/내 순위 행은 위아래 고정 */}
+        <div className={`${RANK_SCROLL_HEIGHT} overflow-y-auto`}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-bg-subtle">
+                <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary w-12 whitespace-nowrap`}>순위</th>
+                <th className={`${RANK_HEAD_CELL} text-left px-4 py-3 text-xs font-semibold text-text-secondary`}>닉네임</th>
+                <th className={`${RANK_HEAD_CELL} text-right px-4 py-3 text-xs font-semibold text-text-secondary`}>소요 시간</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <RankingTable
+                key={`${mode}-${period}-${eventId ?? 'all'}`}
+                mode={mode}
+                period={period}
+                eventId={eventId}
+                initialRows={rankings}
+              />
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   );

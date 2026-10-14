@@ -85,13 +85,19 @@ export function MyRankingRow({
   entry: RankRow;
   showNickname?: boolean;
 }) {
+  // 목록이 스크롤 컨테이너 안에 있으므로 셀 단위로 하단 고정한다.
+  // (sticky 는 tr 이 아니라 td 에 걸어야 브라우저 전반에서 동작하고,
+  //  border-collapse 테이블에선 테두리도 border 대신 inset shadow 로 그려야 남는다.)
+  const stickyCell =
+    'sticky bottom-0 z-10 bg-primary-subtle shadow-[inset_0_2px_0_var(--color-primary)]';
+
   return (
-    <tr className="bg-primary-subtle border-t-2 border-primary">
-      <td className="px-4 py-3 font-mono-tabular font-semibold text-primary">
+    <tr className="bg-primary-subtle">
+      <td className={`${stickyCell} px-4 py-3 font-mono-tabular font-semibold text-primary`}>
         {entry.rank}
       </td>
       {showNickname && (
-        <td className="px-4 py-3">
+        <td className={`${stickyCell} px-4 py-3`}>
           <span className="font-medium text-primary">{entry.nickname}</span>
           {entry.is_verified && (
             <span className="ml-2 badge badge-primary">인증</span>
@@ -99,7 +105,7 @@ export function MyRankingRow({
           <span className="ml-2 text-xs text-primary font-semibold">(나)</span>
         </td>
       )}
-      <td className="px-4 py-3 text-right font-mono-tabular font-bold text-primary">
+      <td className={`${stickyCell} px-4 py-3 text-right font-mono-tabular font-bold text-primary`}>
         {formatTime(entry.best_ms)}
       </td>
     </tr>
