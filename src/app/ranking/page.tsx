@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: '랭킹' };
 
 type Board = 'time' | 'latest-event';
 type Mode = 'practice' | 'live';
-type Period = 'daily' | 'weekly' | 'monthly';
+type Period = 'daily' | 'weekly' | 'monthly' | 'all';
 
 type RankEntry = {
   rank: number;
@@ -44,6 +44,7 @@ const PERIOD_LABELS: Record<Period, string> = {
   daily: '일간',
   weekly: '주간',
   monthly: '월간',
+  all: '전체',
 };
 
 const BOARD_DESCRIPTION: Record<Board, string> = {
@@ -166,6 +167,7 @@ async function TimeBoard({
   const period: Period =
     params.period === 'daily' ? 'daily'
     : params.period === 'weekly' ? 'weekly'
+    : params.period === 'all' ? 'all'
     : 'monthly';
   const eventId = parsePositiveInt(params.eventId, { max: 999999 });
 
