@@ -4,7 +4,8 @@ import { apiFetch, ROUTES } from "./api";
 
 export type LiveRoundStatus = "scheduled" | "open" | "closed" | "cancelled";
 export type LiveSeatStatus = "available" | "held" | "sold";
-export type LiveSessionStatus = "queued" | "active" | "completed";
+/** `failed` 는 이탈(DELETE)·라운드 마감으로 끝난 세션. 재참여 시 새 세션이 발급된다. */
+export type LiveSessionStatus = "queued" | "active" | "completed" | "failed";
 
 /**
  * GET /api/live/current · /api/live/next · /api/live/rounds/:roundId · /api/live/last-round 공통 페이로드.
@@ -48,7 +49,7 @@ export interface LiveSession {
   nickname?: string;
 }
 
-/** GET /api/live/sessions/:sessionId/queue. */
+/** 대기열 스트림 `snapshot` / `queue_update` payload. */
 export interface LiveQueueState {
   sessionId: string;
   status: LiveSessionStatus;
@@ -64,6 +65,14 @@ export interface LiveSeat {
 export interface LiveSeatMap {
   seats: LiveSeat[];
   myHold: { seatLabel: string; expiresAt: string } | null;
+}
+
+/** 좌석 스트림 `seat_update` payload — 변경된 좌석 한 건만 온다. */
+export interface LiveSeatUpdate {
+  seatLabel: string;
+  status: LiveSeatStatus;
+  contextType: "round" | "event";
+  contextId: number;
 }
 
 export interface LiveHold {
@@ -128,14 +137,31 @@ export function startLiveSession(
   });
 }
 
-/** 큐 순번 조회. ready=true 시 폴링 중단. 권장 주기 1초. */
-export function getLiveQueue(sessionId: string) {
-  return apiFetch<LiveQueueState>(ROUTES.live.session(sessionId).queue);
+/**
+ * 세션 이탈. active/queued 세션을 failed 로 종료하고 hold 중이던 좌석을 반환한다.
+ * 이미 failed 면 멱등하게 성공, completed 면 409 ALREADY_COMPLETED.
+ * 이탈 후 다시 참여하면 새 sessionId · 새 started_at 으로 시작한다.
+ */
+export function leaveLiveSession(sessionId: string) {
+  return apiFetch<unknown>(ROUTES.live.session(sessionId).root, {
+    method: "DELETE",
+  });
 }
 
-/** 좌석 배치 조회. 첫 진입 + 2초 폴링 갱신. */
-export function getLiveSeats(sessionId: string) {
-  return apiFetch<LiveSeatMap>(ROUTES.live.session(sessionId).seats);
+/**
+ * 대기열 순번 SSE URL. `snapshot` / `queue_update` 이벤트로 LiveQueueState 가 push 된다.
+ * (기존 폴링 엔드포인트 GET /live/sessions/:id/queue 는 삭제됨.)
+ */
+export function liveQueueStreamUrl(roundId: number | string, sessionId: string) {
+  return ROUTES.live.roundQueueStream(roundId, sessionId);
+}
+
+/**
+ * 좌석맵 SSE URL. `snapshot`(전체) 1회 + `seat_update`(변경분) push.
+ * (기존 폴링 엔드포인트 GET /live/sessions/:id/seats 는 삭제됨.)
+ */
+export function liveSeatsStreamUrl(roundId: number | string, sessionId: string) {
+  return ROUTES.live.roundSeatsStream(roundId, sessionId);
 }
 
 /** 좌석 hold. 재호출 시 기존 hold 자동 해제. TTL 30초. */

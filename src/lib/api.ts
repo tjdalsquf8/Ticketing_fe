@@ -52,9 +52,15 @@ export const ROUTES = {
       `${BASE_URL}/live/rounds/${roundId}/sessions`,
     roundRankings: (roundId: number | string) =>
       `${BASE_URL}/live/rounds/${roundId}/rankings`,
+    /** 대기열 순번 SSE. 폴링 엔드포인트를 대체한다. */
+    roundQueueStream: (roundId: number | string, sessionId: string) =>
+      `${BASE_URL}/live/rounds/${roundId}/queue/stream?sessionId=${encodeURIComponent(sessionId)}`,
+    /** 좌석맵 SSE. 폴링 엔드포인트를 대체한다. */
+    roundSeatsStream: (roundId: number | string, sessionId: string) =>
+      `${BASE_URL}/live/rounds/${roundId}/seats/stream?sessionId=${encodeURIComponent(sessionId)}`,
     session: (sessionId: string) => ({
-      queue: `${BASE_URL}/live/sessions/${sessionId}/queue`,
-      seats: `${BASE_URL}/live/sessions/${sessionId}/seats`,
+      /** DELETE 로 세션 이탈(failed 종료 + hold 좌석 반환). */
+      root: `${BASE_URL}/live/sessions/${sessionId}`,
       hold: `${BASE_URL}/live/sessions/${sessionId}/hold`,
       confirm: `${BASE_URL}/live/sessions/${sessionId}/confirm`,
     }),

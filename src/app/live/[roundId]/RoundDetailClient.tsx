@@ -5,12 +5,16 @@ import Link from 'next/link';
 import {
   getLiveCurrent,
   getLiveRound,
+  isRoundLive,
+  leaveLiveSession,
+  liveQueueStreamUrl,
+  liveSeatsStreamUrl,
   startLiveSession,
   type LiveRoundPublic,
   type LiveSession,
 } from '@/lib/live';
 import { useServerTime } from '@/hooks/useServerTime';
-import { useLiveQueue } from '@/hooks/useLiveQueue';
+import { useQueueStream } from '@/hooks/useQueueStream';
 import { ApiError, validateNickname } from '@/lib/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { postGuest } from '@/lib/guests';
@@ -32,7 +36,7 @@ import { formatCountdown } from '@/lib/kst';
    ─ 상태별(scheduled/open/closed/cancelled) UI 분기
    ─ scheduled: 카운트다운 + opensAt 도래 시 CTA 활성화
    ─ scheduled → open 승격: opensAt 임박 시 /live/current 1초 폴링
-   ─ Phase 4: [예매하기] → POST /sessions → QueueOverlay + 1초 큐 폴링
+   ─ Phase 4: [예매하기] → POST /sessions → QueueOverlay + 대기열 SSE 구독
    ────────────────────────────────────────── */
 
 interface RoundDetailClientProps {
@@ -137,6 +141,22 @@ function clearResultSnapshot() {
   sessionStorage.removeItem(LIVE_RESULT_KEY);
 }
 
+/**
+ * 세션 이탈을 서버에 알린다 (DELETE → failed 종료 + hold 좌석 반환).
+ * 화면 전환을 막지 않도록 fire-and-forget. 이미 completed(409)면 무시한다.
+ */
+function abandonSession(sessionId: string | null) {
+  if (!sessionId) return;
+  void leaveLiveSession(sessionId).catch(() => {});
+}
+
+/** 새로고침으로 돌아온 경우에만 true. 뒤로가기/링크 이탈 후 재진입은 false. */
+function isReloadNavigation(): boolean {
+  if (typeof window === 'undefined' || !window.performance) return false;
+  const [nav] = window.performance.getEntriesByType('navigation');
+  return (nav as PerformanceNavigationTiming | undefined)?.type === 'reload';
+}
+
 export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const { nowServer } = useServerTime();
@@ -167,7 +187,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   // 백엔드 venue config(geometry). 실패 시 FE 정적 카탈로그(event.venue)로 폴백.
   const [venueConfig, setVenueConfig] = useState<VenueConfig | null>(null);
 
-  // 큐 폴링 → 초기 세션 응답을 LiveQueueState 로 변환해 주입
+  // 큐 스트림 → 초기 세션 응답을 LiveQueueState 로 변환해 주입
   const initialQueueState = useMemo(() => {
     if (!initialSessionData) return null;
     return {
@@ -178,11 +198,18 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     };
   }, [initialSessionData]);
 
+  // 대기열 SSE URL. 세션이 없으면 null (연결하지 않음).
+  const roundIdNum = Number(roundId);
+  const queueStreamUrl =
+    activeSessionId && Number.isFinite(roundIdNum)
+      ? liveQueueStreamUrl(roundIdNum, activeSessionId)
+      : null;
+
   const {
     state: queueState,
     error: queueError,
     ready: queueReady,
-  } = useLiveQueue(activeSessionId, initialQueueState);
+  } = useQueueStream(queueStreamUrl, initialQueueState);
 
   // ── 상세 로드 ─────────────────────────────
   const loadRound = useCallback(async () => {
@@ -279,25 +306,19 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
       clearSessionSnapshot();
       return;
     }
-    // 초기 상태 없이 폴링만 시작. useLiveQueue 가 SESSION_NOT_FOUND 응답 시 알아서 에러 노출.
+    // 페이지를 떠났다가 다시 들어온 것이면 그 참여는 끝난 것으로 본다.
+    // 자동 복구는 "새로고침"만 대상 — 그 외에는 남아있던 세션을 서버에서도 끝낸다
+    // (그래야 다시 참여할 때 새 세션 · 새 시작 시각으로 시작된다).
+    if (!isReloadNavigation()) {
+      abandonSession(snap.sessionId);
+      clearSessionSnapshot();
+      return;
+    }
+    // 초기 상태 없이 스트림만 연결. useQueueStream 이 SESSION_NOT_FOUND 응답 시 에러 노출.
     setActiveSessionId(snap.sessionId);
     setInitialSessionData(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, authLoading]);
-
-  // 서버 참여 이력(myParticipation)으로 큐/오버레이 복원.
-  // 로컬 스냅샷과 달리 다른 탭·기기에서도 정확하므로, 로컬 복원이 못 잡은 경우를 보완한다.
-  // (완료 상태는 여기서 자동 복원하지 않는다 — 예매 버튼 비활성화만으로 충분하고,
-  //  결과 팝업 재현엔 rankNumber 등 로컬 스냅샷에만 있는 정보가 필요하다.)
-  useEffect(() => {
-    if (state.kind !== 'ready') return;
-    if (activeSessionId || liveResult) return;
-    const mp = state.round.myParticipation;
-    if (mp && (mp.status === 'queued' || mp.status === 'active')) {
-      setActiveSessionId(mp.sessionId);
-      setInitialSessionData(null);
-    }
-  }, [state, activeSessionId, liveResult]);
 
   // 카운트다운 tick (500ms)
   useEffect(() => {
@@ -419,7 +440,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
         const body = nicknameToSend ? { nickname: nicknameToSend } : {};
         const session = await startLiveSession(state.round.roundId, body);
         // 이미 이 회차에 참여 완료한 경우, 백엔드가 idempotent 로 completed 세션을 반환.
-        // 큐 오버레이 진입하면 폴링만 무한 반복되므로 사전에 차단하고 안내한다.
+        // 큐 오버레이 진입하면 승격되지 않는 스트림만 붙잡고 있으므로 사전에 차단하고 안내한다.
         if (session.status === 'completed') {
           setStartError(
             new Error('이미 이 회차에 참여하셨습니다. 결과는 실시간 랭킹 또는 다른 회차에서 확인해 주세요.'),
@@ -512,11 +533,12 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   }, [nicknameDraft, performStart]);
 
   const handleCancelOverlay = useCallback(() => {
+    abandonSession(activeSessionId);
     clearSessionSnapshot();
     setActiveSessionId(null);
     setInitialSessionData(null);
     setStartError(null);
-  }, []);
+  }, [activeSessionId]);
 
   // ── 좌석 확정 결과 / 대기실 이탈 핸들러 (rules-of-hooks 준수 위해 early return 이전 선언) ──
   const handleConfirmed = useCallback(
@@ -539,14 +561,16 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   );
 
   const handleBackFromBooking = useCallback(() => {
-    // 좌석 선택 화면에서 나가면 세션 정리(재입장 방지). 결과 폴백도 함께 정리.
+    // 좌석 선택 화면에서 나가면 그 참여는 종료 — 서버 세션도 끝내고 로컬 스냅샷을 비운다.
+    // 다시 하려면 참여하기를 눌러야 하고, 그때 새 세션 · 새 시작 시각으로 시작된다.
+    abandonSession(enteredSessionId ?? activeSessionId);
     clearSessionSnapshot();
     clearResultSnapshot();
     setEnteredSessionId(null);
     setActiveSessionId(null);
     setInitialSessionData(null);
     setLiveResult(null);
-  }, []);
+  }, [enteredSessionId, activeSessionId]);
 
   // 결과 팝업 닫기(배경 클릭/랭킹 보러가기 클릭) 훅. 팝업 자체를 닫아야
   // 회차 히어로 화면이 다시 정상 동작한다(그렇지 않으면 showResult 가 계속 true).
@@ -618,21 +642,29 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
   const opensAtMs = Date.parse(round.opensAt);
   const nowMs = nowServer();
   const remainingToOpenMs = opensAtMs - nowMs;
+  // closesAt 이 지났으면 백엔드 status 가 아직 'open' 이어도 종료로 본다
+  // (임의 시각 회차는 종료 크론이 다음 정각까지 늦을 수 있다).
+  const isEnded = !isRoundLive(round, nowMs) && nowMs >= Date.parse(round.closesAt);
   const isClosedOrCancelled =
-    round.status === 'closed' || round.status === 'cancelled';
-  const isOpen = round.status === 'open' || nowMs >= opensAtMs;
+    round.status === 'closed' || round.status === 'cancelled' || isEnded;
+  const isOpen = !isEnded && (round.status === 'open' || nowMs >= opensAtMs);
   // 서버가 요청자(로그인 유저/게스트 쿠키) 기준으로 내려주는 참여 이력.
   // 로컬 스냅샷(sessionStorage)과 달리 탭/기기와 무관하게 항상 정확하다.
   const myParticipation = round.myParticipation;
 
-  const layoutCanBook = !isClosedOrCancelled && isOpen && !authLoading && !myParticipation;
+  // 완료한 회차만 막는다. 진행 중이던 세션에서 나간 경우엔 다시 누를 수 있어야 한다
+  // (그렇지 않으면 나가기 후 버튼이 잠겨 아무것도 못 하는 상태가 된다).
+  const layoutCanBook =
+    !isClosedOrCancelled &&
+    isOpen &&
+    !authLoading &&
+    myParticipation?.status !== 'completed';
   const layoutDisabledReason: string | undefined = (() => {
     if (isClosedOrCancelled) {
       return round.status === 'cancelled' ? '취소된 회차' : '종료된 회차';
     }
     if (!isOpen) return `오픈까지 ${formatCountdown(remainingToOpenMs)}`;
     if (myParticipation?.status === 'completed') return '이미 참여한 회차입니다';
-    if (myParticipation) return '참여 중인 세션이 있습니다';
     return undefined;
   })();
 
@@ -690,6 +722,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
     {
       label: '상태',
       value: (() => {
+        if (isEnded) return <span className="badge badge-neutral">종료</span>;
         switch (round.status) {
           case 'open':
             return <span className="badge badge-danger">진행 중</span>;
@@ -795,6 +828,7 @@ export default function RoundDetailClient({ roundId }: RoundDetailClientProps) {
               liveMode={{
                 sessionId: enteredSessionId,
                 roundId: round.roundId,
+                seatsStreamUrl: liveSeatsStreamUrl(round.roundId, enteredSessionId),
                 onConfirmed: handleConfirmed,
               }}
               onBack={handleBackFromBooking}

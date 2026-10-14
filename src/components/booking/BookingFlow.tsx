@@ -15,15 +15,13 @@ import FestivalMap   from './FestivalMap';
 import SeatGrid      from './SeatGrid';
 import SelectionPanel from './SelectionPanel';
 import { apiFetch, ROUTES } from '@/lib/api';
-import { useLiveSeats } from '@/hooks/useLiveSeats';
+import { useSeatsStream } from '@/hooks/useSeatsStream';
 import { useServerTime } from '@/hooks/useServerTime';
 import {
-  getLiveSeats,
   holdSeat as apiHoldSeat,
   confirmSeat as apiConfirmSeat,
   type LiveConfirmResult,
   type LiveHold,
-  type LiveSeatMap,
 } from '@/lib/live';
 import { ApiError } from '@/lib/errors';
 
@@ -53,18 +51,17 @@ interface BookingMeta {
 }
 
 /**
- * hold/confirm/seat-fetch 호출 대상. 기본값은 실시간 티켓팅(`@/lib/live`)이며,
+ * hold/confirm 호출 대상. 기본값은 실시간 티켓팅(`@/lib/live`)이며,
  * 이벤트 티켓팅처럼 다른 API(`@/lib/events`)를 써야 하면 주입한다.
- * 응답 shape는 LiveSeatMap/LiveHold/LiveConfirmResult와 동일해야 한다.
+ * 응답 shape는 LiveHold/LiveConfirmResult와 동일해야 한다.
+ * (좌석맵은 REST 가 아니라 SSE 라 `seatsStreamUrl` 로 따로 받는다.)
  */
 interface LiveApi {
-  getSeats: (sessionId: string) => Promise<LiveSeatMap>;
   holdSeat: (sessionId: string, seatLabel: string) => Promise<LiveHold>;
   confirmSeat: (sessionId: string, seatLabel: string) => Promise<LiveConfirmResult>;
 }
 
 const DEFAULT_LIVE_API: LiveApi = {
-  getSeats: getLiveSeats,
   holdSeat: apiHoldSeat,
   confirmSeat: apiConfirmSeat,
 };
@@ -74,9 +71,11 @@ interface LiveModeConfig {
   sessionId: string;
   /** 회차 ID (완료 시 sessionStorage 정리 및 결과 매핑용) */
   roundId: number;
+  /** 좌석맵 SSE URL (`liveSeatsStreamUrl` / `eventSeatsStreamUrl` 로 생성). */
+  seatsStreamUrl: string;
   /** confirm 성공 시 상위(RoundDetailClient)로 결과 전달 */
   onConfirmed?: (result: LiveConfirmResult, seatLabel: string) => void;
-  /** hold/confirm/seat-fetch API. 미지정 시 실시간 티켓팅(`@/lib/live`) 기본값 사용. */
+  /** hold/confirm API. 미지정 시 실시간 티켓팅(`@/lib/live`) 기본값 사용. */
   api?: LiveApi;
 }
 
@@ -106,7 +105,7 @@ interface Props {
   /**
    * 실전 라이브 모드. 지정 시:
    * - 랜덤 taken 시뮬레이션 스킵 (CAPTCHA는 그대로 노출, skipCaptcha prop으로 별도 제어)
-   * - useLiveSeats 로 좌석 상태 구독 (2초 폴링)
+   * - useSeatsStream 으로 좌석 상태 구독 (SSE push)
    * - 좌석 클릭 → holdSeat, 완료 → confirmSeat 실제 호출
    * - MAX_SEATS=1 강제 (백엔드는 세션당 hold 1좌석만 허용)
    */
@@ -144,7 +143,7 @@ export default function BookingFlow({
     refetch: refetchSeats,
     onHoldSuccess,
     onConfirmSuccess,
-  } = useLiveSeats(isLive ? liveMode!.sessionId : null, liveApi.getSeats);
+  } = useSeatsStream(isLive ? liveMode!.seatsStreamUrl : null);
   const { nowServer } = useServerTime();
   const [liveInlineError, setLiveInlineError] = useState<string | null>(null);
   const [holdPending, setHoldPending] = useState(false);
@@ -261,7 +260,7 @@ export default function BookingFlow({
     }
 
     // 좌석 상태 계산.
-    //  - 실전 라이브(isLive=true): useLiveSeats.seatMap 이 SeatGrid 로 직접 주입. bookedSeats 미사용.
+    //  - 실전 라이브(isLive=true): useSeatsStream.seatMap 이 SeatGrid 로 직접 주입. bookedSeats 미사용.
     //  - 라이브 미리보기(liveSeatSet 있음): live에 포함 안 된 좌석 = "미오픈" (선택 불가)
     //  - 연습 모드: 랜덤 ~35% 예매완료 시뮬레이션
     const taken = new Set<string>();
