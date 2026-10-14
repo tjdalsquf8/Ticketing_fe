@@ -97,6 +97,22 @@ export interface LastRoundResult {
   }>;
 }
 
+/**
+ * 지금 실제로 진행 중인 회차인지. `status` 만 믿지 않고 `closesAt` 을 함께 본다.
+ *
+ * 백엔드 종료 처리는 매시 :00 · :ROUND_DURATION_MINUTES 크론이라, 그 사이에 끝나는
+ * 회차(관리자 즉시 생성 등)는 한동안 `status: "open"` 으로 남는다. 그 값을 그대로
+ * 믿으면 이미 끝난 회차가 "지금 진행 중"으로 표시된다.
+ */
+export function isRoundLive(
+  round: LiveRoundSummary | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!round || round.status !== "open") return false;
+  const closesAtMs = Date.parse(round.closesAt);
+  return !Number.isFinite(closesAtMs) || nowMs < closesAtMs;
+}
+
 // ── 공용 조회 ─────────────────────────────────────────
 
 /** 진행중 회차. 없으면 null. */
