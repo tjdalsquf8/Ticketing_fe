@@ -30,16 +30,22 @@
 <table>
   <tr>
     <td align="center">
-      <img src="READMEIMG/live.png" width="300"/><br/>
-      <sub>실시간 이벤트 — 다음 회차 카운트다운 · 대기실 입장</sub>
+      <img src="READMEIMG/home.png" width="400"/><br/>
+      <sub>메인 홈 — 공지 · 다음 회차 · 실시간 현황</sub>
     </td>
     <td align="center">
-      <img src="READMEIMG/practice.png" width="300"/><br/>
-      <sub>연습 모드 — 공연 선택</sub>
+      <img src="READMEIMG/live.png" width="400"/><br/>
+      <sub>실시간 이벤트 — 카운트다운 · 대기실 입장</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="READMEIMG/ranking.png" width="400"/><br/>
+      <sub>랭킹 — 모드 · 기간별 소요 시간 순위</sub>
     </td>
     <td align="center">
-      <img src="READMEIMG/practice-detail.png" width="300"/><br/>
-      <sub>연습 모드 — 공연 상세 · 회차 선택</sub>
+      <img src="READMEIMG/admin.png" width="400"/><br/>
+      <sub>관리자 대시보드</sub>
     </td>
   </tr>
 </table>
