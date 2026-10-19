@@ -41,8 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude code (local settings only)
-.claude/settings.local.json
+# claude code
+.claude/
+CLAUDE.md
 
 # markdown 문서는 로컬 관리 (README·PR 템플릿 제외)
 *.md
